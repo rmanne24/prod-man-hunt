@@ -1,7 +1,11 @@
 /**
  * PMPilot Agent Server
  * Connects CopilotKit runtime, OpenAI Agents SDK, Exa, Redis state,
- * Mozilla trust layer, Trigger.dev background jobs, and multi-app webhooks.
+ * Mozilla trust layer, Trigger.dev background jobs, and Cross-Surface Hub
+ * (At Work: Slack, Teams, Email, Docs, Calendars, Tickets, Support;
+ *  In Your Pocket: Mobile Companion, Push Notifications, 1-Tap Approvals;
+ *  On the Web: Autonomous Browser Agent;
+ *  Credits & API Key Configuration).
  */
 
 import express from "express";
@@ -12,6 +16,7 @@ import { ExaResearchEngine } from "./services/exa.js";
 import { MozillaTrustEngine } from "./services/mozillaTrust.js";
 import { TriggerJobRunner } from "./jobs/triggerJobs.js";
 import { AgentOrchestrator } from "./agents/orchestrator.js";
+import { CrossSurfaceHub } from "./services/crossSurfaceHub.js";
 
 dotenv.config();
 
@@ -26,16 +31,21 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "healthy",
     name: "PMPilot (Associate PM) Agent Engine",
-    version: "1.0.0",
+    version: "2.0.0",
     sponsors: {
       copilotKit: "active",
       openaiAgentsSDK: "active",
       exa: "active",
-      redis: "active (in-memory persistent fallback)",
+      redis: "active",
       triggerDev: "active",
       mozillaAI: "active",
       openRouter: "active",
       auth0: "active"
+    },
+    crossSurfaceSurfaces: {
+      atWork: ["Slack", "Microsoft Teams", "Email", "Notion Documents", "Google Calendar", "Linear / Jira", "Zendesk Support", "Live Team Presence"],
+      inYourPocket: ["Mobile Push Alerts", "1-Tap Asynchronous Approvals", "SMS/Telegram Bot"],
+      onTheWeb: ["Autonomous Browser Research", "DOM Table Extraction", "Competitor Navigation", "Automated Issue Filing"]
     },
     timestamp: new Date().toISOString()
   });
@@ -103,8 +113,6 @@ app.post("/api/session/:sessionId/action", async (req, res) => {
       case "capture_evidence":
         const { sourceName, sourceType, content, url } = payload || {};
         const cleaned = MozillaTrustEngine.cleanContent(content || "");
-        const epistemic = MozillaTrustEngine.classifyEpistemicClaim(cleaned, [sourceName || "Browser Source"]);
-
         await RedisStateManager.updateSession(sessionId, (s) => {
           const newSrc = {
             id: `src_${Date.now()}`,
@@ -145,7 +153,7 @@ app.post("/api/research/competitors", async (req, res) => {
   }
 });
 
-// Trigger.dev async background job endpoint
+// Trigger.dev async background job endpoints
 app.post("/api/jobs/prd", async (req, res) => {
   try {
     const { sessionId, options } = req.body;
@@ -164,41 +172,86 @@ app.get("/api/jobs/:jobId/status", (req, res) => {
   res.json({ success: true, job });
 });
 
-// Multi-app integrations: Linear ticket export
-app.post("/api/export/linear", async (req, res) => {
-  try {
-    const { tickets } = req.body;
-    res.json({
-      success: true,
-      destination: "Linear (Workspace: Moonshot Studio)",
-      createdTickets: tickets || [
-        { id: "ENG-201", url: "https://linear.app/moonshot/issue/ENG-201", title: "Build guest-checkout entry modal" },
-        { id: "ENG-202", url: "https://linear.app/moonshot/issue/ENG-202", title: "3-product comparison tray drawer" }
-      ],
-      syncedAt: new Date().toISOString()
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+/* ------------------- CROSS-SURFACE HUB ENDPOINTS ------------------- */
+
+// Hub overview & active integrations status
+app.get("/api/hub/status", (req, res) => {
+  res.json({
+    success: true,
+    teamMembers: CrossSurfaceHub.activeTeamMembers,
+    supportTickets: CrossSurfaceHub.supportTickets,
+    calendarEvents: CrossSurfaceHub.calendarEvents,
+    apiKeysStatus: CrossSurfaceHub.getApiKeysStatus()
+  });
 });
 
-// Multi-app integrations: Slack notification webhook
-app.post("/api/export/slack", async (req, res) => {
-  try {
-    const { channel, message } = req.body;
-    res.json({
-      success: true,
-      channel: channel || "#product-announcements",
-      postedMessage: message || "Associate PM: AI Checkout PRD v1.0 generated with 96% evidence confidence.",
-      deliveredAt: new Date().toISOString()
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+// At Work: Slack trigger
+app.post("/api/hub/slack", async (req, res) => {
+  const { channel, message } = req.body;
+  const result = await CrossSurfaceHub.triggerSlackNotification(channel, message);
+  res.json(result);
+});
+
+// At Work: Teams trigger
+app.post("/api/hub/teams", async (req, res) => {
+  const { channel } = req.body;
+  const result = await CrossSurfaceHub.triggerTeamsCard(channel);
+  res.json(result);
+});
+
+// At Work: Email digest
+app.post("/api/hub/email", async (req, res) => {
+  const { recipient } = req.body;
+  const result = await CrossSurfaceHub.sendEmailDigest(recipient);
+  res.json(result);
+});
+
+// At Work: Notion export
+app.post("/api/hub/notion", async (req, res) => {
+  const { title } = req.body;
+  const result = await CrossSurfaceHub.exportToNotionDoc(title);
+  res.json(result);
+});
+
+// At Work: Google Calendar schedule
+app.post("/api/hub/calendar", async (req, res) => {
+  const { experimentName } = req.body;
+  const result = await CrossSurfaceHub.scheduleCalendarInterview(experimentName);
+  res.json(result);
+});
+
+// In Your Pocket: Mobile notifications
+app.get("/api/hub/pocket/notifications", (req, res) => {
+  res.json({ success: true, notifications: CrossSurfaceHub.getPocketNotifications() });
+});
+
+// In Your Pocket: 1-Tap approval from mobile
+app.post("/api/hub/pocket/approve", async (req, res) => {
+  const { notificationId, choice } = req.body;
+  const result = await CrossSurfaceHub.executePocketApproval(notificationId, choice);
+  res.json(result);
+});
+
+// On The Web: Browser agent automation
+app.post("/api/hub/web/automate", async (req, res) => {
+  const { task } = req.body;
+  const result = await CrossSurfaceHub.runWebAutomationAction(task);
+  res.json(result);
+});
+
+// Settings: Live API Keys & Credits
+app.get("/api/hub/settings/keys", (req, res) => {
+  res.json({ success: true, keys: CrossSurfaceHub.getApiKeysStatus() });
+});
+
+app.post("/api/hub/settings/keys", (req, res) => {
+  const { keys } = req.body;
+  const result = CrossSurfaceHub.updateApiKeys(keys);
+  res.json(result);
 });
 
 app.listen(PORT, () => {
   console.log(`[PMPilot Agent Server] Running on http://localhost:${PORT}`);
   console.log(`[CopilotKit Runtime] Ready at http://localhost:${PORT}/api/copilotkit`);
-  console.log(`[Health Endpoint] http://localhost:${PORT}/api/health`);
+  console.log(`[Cross-Surface Hub] Active on http://localhost:${PORT}/api/hub/status`);
 });

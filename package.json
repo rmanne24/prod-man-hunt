@@ -4,10 +4,12 @@
   "private": true,
   "description": "PMPilot (Associate PM) - Browser-Based Research Agent for Product Managers",
   "scripts": {
-    "dev": "node -e \"console.log('Use npm run dev in backend and frontend directories')\"",
-    "start:backend": "cd backend && npm start",
+    "dev": "concurrently --kill-others \"npm run start:backend\" \"npm run start:frontend\"",
+    "start": "concurrently --kill-others \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:backend": "cd backend && node src/server.js",
     "start:frontend": "cd frontend && npm run dev",
-    "build:frontend": "cd frontend && npm run build"
+    "build": "cd frontend && npm run build",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
   },
   "keywords": [
     "copilotkit",
@@ -19,6 +21,9 @@
     "openrouter",
     "product-management"
   ],
+  "dependencies": {
+    "concurrently": "^9.1.2"
+  },
   "author": "Sairishita Manne",
   "license": "MIT"
 }

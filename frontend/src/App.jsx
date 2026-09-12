@@ -5,17 +5,21 @@ import CopilotSidebar from './components/CopilotSidebar.jsx';
 import DeliveryArtifacts from './components/DeliveryArtifacts.jsx';
 import ValidationPlanView from './components/ValidationPlanView.jsx';
 import CaptureSourceModal from './components/CaptureSourceModal.jsx';
+import AtWorkHub from './components/AtWorkHub.jsx';
+import PocketCompanion from './components/PocketCompanion.jsx';
+import WebAutomationAgent from './components/WebAutomationAgent.jsx';
+import SettingsModal from './components/SettingsModal.jsx';
 import OmniBar from './components/OmniBar.jsx';
-import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('evidence');
   const [session, setSession] = useState(null);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGeneratingJob, setIsGeneratingJob] = useState(false);
   const [jobProgress, setJobProgress] = useState(null);
 
-  // Initial seed fallback state matching screenshot
   const fallbackSession = {
     sessionId: "session_moonshot_checkout",
     workspace: "Moonshot Studio",
@@ -171,7 +175,6 @@ export default function App() {
         }
       }
     } catch (err) {
-      // Offline fallback mutation
       setSession(prev => {
         const next = { ...prev };
         const c = next.conflicts.find(x => x.id === conflictId);
@@ -218,9 +221,7 @@ export default function App() {
         body: JSON.stringify({ sessionId: 'session_moonshot_checkout' })
       });
       const data = await res.json();
-      const jobId = data.job?.jobId;
 
-      // Poll or simulate pipeline progression
       let pct = 20;
       const interval = setInterval(async () => {
         pct += 25;
@@ -259,6 +260,7 @@ export default function App() {
         setActiveNav={setActiveNav}
         sources={activeSession.capturedSources || []}
         onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* 2. Main Workspace Content */}
@@ -276,6 +278,24 @@ export default function App() {
             onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
             onGenerateDecisionPack={handleGenerateDecisionPack}
           />
+        )}
+
+        {activeNav === 'atwork' && (
+          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+            <AtWorkHub />
+          </div>
+        )}
+
+        {activeNav === 'pocket' && (
+          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+            <PocketCompanion onResolveConflict={handleResolveConflict} />
+          </div>
+        )}
+
+        {activeNav === 'web' && (
+          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+            <WebAutomationAgent />
+          </div>
         )}
 
         {activeNav === 'decisions' && (
@@ -338,6 +358,11 @@ export default function App() {
         }}
       />
 
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
+
       {/* Trigger.dev Async Job Modal */}
       {isGeneratingJob && (
         <div style={{
@@ -381,7 +406,6 @@ export default function App() {
               {jobProgress?.step || "Processing multimodal PM context..."}
             </p>
 
-            {/* Progress Bar */}
             <div style={{
               width: '100%',
               height: '8px',

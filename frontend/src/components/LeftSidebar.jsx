@@ -1,23 +1,29 @@
 import React from 'react';
 import {
-  Sparkles,
   Layers,
   FileCheck,
   Compass,
   Package,
-  Plus,
+  Briefcase,
+  Smartphone,
+  Globe,
+  Key,
   Pause,
-  Play
+  Plus
 } from 'lucide-react';
 
 export default function LeftSidebar({
   activeNav = 'evidence',
   setActiveNav,
   sources = [],
-  onCaptureSourceClick
+  onCaptureSourceClick,
+  onOpenSettings
 }) {
   const navItems = [
     { id: 'evidence', label: 'Evidence workspace', icon: Layers },
+    { id: 'atwork', label: 'At work ecosystem', icon: Briefcase, badge: 'Slack / Teams' },
+    { id: 'pocket', label: 'In your pocket', icon: Smartphone, badge: 'Mobile' },
+    { id: 'web', label: 'On the web', icon: Globe, badge: 'Agent' },
     { id: 'decisions', label: 'Product decisions', icon: FileCheck },
     { id: 'validation', label: 'Validation plans', icon: Compass },
     { id: 'artifacts', label: 'Delivery artifacts', icon: Package }
@@ -25,14 +31,14 @@ export default function LeftSidebar({
 
   return (
     <aside style={{
-      width: '240px',
-      minWidth: '240px',
+      width: '260px',
+      minWidth: '260px',
       background: '#ffffff',
       borderRight: '1px solid #e5e8e1',
       padding: '24px 16px',
       display: 'flex',
       flexDirection: 'column',
-      gap: '24px',
+      gap: '20px',
       height: '100%',
       overflowY: 'auto'
     }}>
@@ -72,20 +78,20 @@ export default function LeftSidebar({
         background: '#fafbf9',
         border: '1px solid #e5e8e1',
         borderRadius: '12px',
-        padding: '12px 14px'
+        padding: '10px 12px'
       }}>
         <div style={{
-          fontSize: '10px',
+          fontSize: '9.5px',
           fontWeight: 800,
           letterSpacing: '0.8px',
           color: '#718378',
           textTransform: 'uppercase',
-          marginBottom: '3px'
+          marginBottom: '2px'
         }}>
           WORKSPACE
         </div>
         <div style={{
-          fontSize: '13.5px',
+          fontSize: '13px',
           fontWeight: 700,
           color: '#131916'
         }}>
@@ -94,7 +100,7 @@ export default function LeftSidebar({
       </div>
 
       {/* Nav Menu */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
         {navItems.map((item) => {
           const isActive = activeNav === item.id;
           const Icon = item.icon;
@@ -106,10 +112,10 @@ export default function LeftSidebar({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
-                padding: '10px 12px',
+                justifyContent: 'space-between',
+                padding: '9px 12px',
                 borderRadius: '8px',
-                fontSize: '13.5px',
+                fontSize: '13px',
                 fontWeight: isActive ? 700 : 500,
                 color: isActive ? '#143825' : '#4f6156',
                 background: isActive ? '#e3edd7' : 'transparent',
@@ -119,8 +125,22 @@ export default function LeftSidebar({
                 transition: 'all 0.15s ease'
               }}
             >
-              <Icon size={16} strokeWidth={isActive ? 2.3 : 1.8} />
-              <span>{item.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                <Icon size={15} strokeWidth={isActive ? 2.3 : 1.8} />
+                <span>{item.label}</span>
+              </div>
+              {item.badge && (
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: 700,
+                  background: isActive ? '#cce0ba' : '#f0f4ec',
+                  color: '#2d4536',
+                  padding: '2px 5px',
+                  borderRadius: '4px'
+                }}>
+                  {item.badge}
+                </span>
+              )}
             </button>
           );
         })}
@@ -130,9 +150,9 @@ export default function LeftSidebar({
       <div style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
+        gap: '10px',
         borderTop: '1px solid #f0f3ee',
-        paddingTop: '20px'
+        paddingTop: '16px'
       }}>
         <div style={{
           display: 'flex',
@@ -141,18 +161,18 @@ export default function LeftSidebar({
           padding: '0 4px'
         }}>
           <span style={{
-            fontSize: '13px',
+            fontSize: '12.5px',
             fontWeight: 700,
             color: '#131916'
           }}>
             Captured context
           </span>
           <span style={{
-            fontSize: '10.5px',
+            fontSize: '10px',
             fontWeight: 700,
             background: '#e6f7ec',
             color: '#047857',
-            padding: '2px 7px',
+            padding: '2px 6px',
             borderRadius: '9999px',
             letterSpacing: '0.4px'
           }}>
@@ -161,7 +181,7 @@ export default function LeftSidebar({
         </div>
 
         {/* Source List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {sources.map((src) => {
             let badgeBg = '#f3effe';
             let badgeColor = '#6d28d9';
@@ -176,32 +196,29 @@ export default function LeftSidebar({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '10px',
-                  padding: '6px 8px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  transition: 'background 0.15s'
+                  gap: '8px',
+                  padding: '5px 6px',
+                  borderRadius: '6px',
+                  cursor: 'pointer'
                 }}
-                onMouseOver={(e) => e.currentTarget.style.background = '#f7f8f5'}
-                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <div style={{
-                  width: '26px',
-                  height: '26px',
+                  width: '24px',
+                  height: '24px',
                   borderRadius: '50%',
                   background: badgeBg,
                   color: badgeColor,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '11.5px',
+                  fontSize: '11px',
                   fontWeight: 800
                 }}>
                   {src.badge}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
-                    fontSize: '12.5px',
+                    fontSize: '12px',
                     fontWeight: 600,
                     color: '#131916',
                     whiteSpace: 'nowrap',
@@ -210,10 +227,7 @@ export default function LeftSidebar({
                   }}>
                     {src.name}
                   </div>
-                  <div style={{
-                    fontSize: '11px',
-                    color: '#718378'
-                  }}>
+                  <div style={{ fontSize: '10px', color: '#718378' }}>
                     {src.status}
                   </div>
                 </div>
@@ -222,7 +236,7 @@ export default function LeftSidebar({
           })}
         </div>
 
-        {/* Action Buttons */}
+        {/* Buttons */}
         <button
           onClick={onCaptureSourceClick}
           style={{
@@ -230,34 +244,42 @@ export default function LeftSidebar({
             color: '#ffffff',
             border: 'none',
             borderRadius: '9999px',
-            padding: '10px 14px',
-            fontSize: '12.5px',
+            padding: '8px 12px',
+            fontSize: '12px',
             fontWeight: 700,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '6px',
-            marginTop: '6px'
+            gap: '6px'
           }}
         >
           <span>+ Capture evidence</span>
         </button>
+      </div>
 
+      {/* Settings / API Keys Footer Button */}
+      <div style={{ marginTop: 'auto', borderTop: '1px solid #f0f3ee', paddingTop: '14px' }}>
         <button
+          onClick={onOpenSettings}
           style={{
-            background: 'transparent',
-            color: '#495a51',
-            border: '1px solid #d8dfd9',
-            borderRadius: '9999px',
-            padding: '8px 14px',
-            fontSize: '12px',
-            fontWeight: 600,
+            width: '100%',
+            background: '#f3f6f1',
+            color: '#143825',
+            border: '1px solid #d8dfd5',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            fontSize: '11.5px',
+            fontWeight: 700,
             cursor: 'pointer',
-            textAlign: 'center'
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px'
           }}
         >
-          Pause collection
+          <Key size={13} />
+          <span>API Keys & Credits</span>
         </button>
       </div>
     </aside>

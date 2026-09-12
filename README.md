@@ -99,14 +99,40 @@ Every single node in the **Evidence Graph** provides click-to-inspect proof and 
 
 ---
 
-## 🚦 Contradiction Gate: The Hero Decision Layer
+---
 
-When sources conflict (e.g. **Figma UX spec allows max 3 items in cart comparison drawer** vs. **Linear ENG-142 requested 5 items**), PMPilot **refuses to silently hallucinate a compromise**.
+## 🌐 Cross-Surface Capabilities: Work, Pocket & Web
 
-Instead, it gates the decision with a **Contradiction Gate**:
-1. Flags the blocking contradiction and its mobile viewport risk.
-2. Offers one-click resolutions based on empirical UX evidence.
-3. Automatically recalculates Decision Health confidence from **88% to 96%** upon resolution and records the rationale to **Decision Memory**.
+PMPilot operates across every surface of a product manager's day:
+
+### 1. At Work: Real-time Workflow & Collaboration
+- **Slack**: Automated channel briefings, PRD cards, and contradiction alert webhooks to `#product-announcements`.
+- **Microsoft Teams**: Adaptive Cards dispatched directly to strategy and engineering review channels.
+- **Email**: Executive stakeholder digests and automated customer cart-abandonment recovery copy.
+- **Documents**: 1-click living document export to Notion, Google Docs, and Markdown.
+- **Calendars**: Automatically schedules user testing interviews on Google Calendar & Outlook.
+- **Tickets**: Full bidirectional synchronization with Linear (`ENG-201` to `ENG-204`), Jira, and GitHub Issues.
+- **Customer Support**: Ingests customer drop-off tickets from **Zendesk** & **Intercom** to substantiate conversion friction in the Evidence Graph.
+- **Live Collaboration**: Multiplayer Decision Room showing real-time presence (PM Lead, Design Lead, Tech Lead) and consensus voting.
+
+### 2. In Your Pocket: Mobile & Short Asynchronous Moments
+- **Mobile Companion Simulator**: Interactive smartphone interface accessible anywhere.
+- **Push Notifications**: Instant alerts when new cross-source contradictions arise or PRDs are synthesized.
+- **Short Asynchronous Moments**: 1-tap decision cards (`[Approve 3 (Figma)]` or `[Keep 5]`) that resolve blocking issues and update the desktop evidence workspace in under 120ms.
+- **SMS & Telegram Agent**: Conversational mobile agent answering PM queries on the go.
+
+### 3. On the Web: Autonomous Browser Agent
+- **Autonomous Research & Navigation**: Navigates live competitor sites (Stripe, Shopify, Amazon), inspects DOM elements, and extracts feature tables.
+- **Automated Transactions & Actions**: Fills out forms, tests checkout flows, and files issues automatically with an end-to-end visual execution trace.
+
+---
+
+## 🔑 Live API Keys & Credits (Zero Downtime)
+PMPilot includes a dedicated **API Keys & Credits Configuration** panel (accessible via the sidebar):
+- Enter your **OpenAI API Key** (`OPENAI_API_KEY`) for live GPT-4o reasoning.
+- Enter your **Exa API Key** (`EXA_API_KEY`) for live real-time competitor web search.
+- Enter your **Slack Webhook URL** and **Linear API Key** for live workplace dispatch.
+- *If keys are not yet provided, PMPilot runs seamlessly in realistic resilient fallback mode with zero downtime or broken screens!*
 
 ---
 
@@ -130,37 +156,27 @@ Instead, it gates the decision with a **Contradiction Gate**:
 
 ### 1. Clone & Install Dependencies
 ```bash
-# Clone the repository
-git clone https://github.com/rmanne24/pmpilot.git
-cd pmpilot
+git clone https://github.com/rmanne24/prod-man-hunt.git
+cd prod-man-hunt
 
-# Install Backend Dependencies
-cd backend
-npm install
-
-# Install Frontend Dependencies
-cd ../frontend
-npm install
+# One-command install all dependencies
+npm run install:all
 ```
 
 ### 2. Configure Environment (Optional)
-Copy `.env.example` to `.env` in `backend/`:
+Copy `.env.example` to `.env` in `backend/` or enter keys directly in the in-app **API Keys & Credits** settings:
 ```bash
-cp .env.example .env
+cp backend/.env.example backend/.env
 ```
 *(Note: PMPilot includes a built-in resilient simulation and fallback layer so it works out-of-the-box immediately even without external API keys!)*
 
-### 3. Launch Development Servers
+### 3. Launch with One Command!
 ```bash
-# Terminal 1: Backend Server (Port 4000)
-cd backend
-npm run dev
-
-# Terminal 2: Frontend Web App (Port 5173)
-cd frontend
+# Starts both Backend (port 4000) and Frontend (port 5173) concurrently:
 npm run dev
 ```
 Open **`http://localhost:5173`** in your browser!
+
 
 ### 4. Load the Chrome Extension
 1. Open Google Chrome and navigate to `chrome://extensions`.
