@@ -1,0 +1,24 @@
+{
+  "name": "pmpilot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PMPilot (Associate PM) - Browser-Based Research Agent for Product Managers",
+  "scripts": {
+    "dev": "node -e \"console.log('Use npm run dev in backend and frontend directories')\"",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "copilotkit",
+    "openai-agents-sdk",
+    "exa",
+    "redis",
+    "trigger-dev",
+    "mozilla-ai",
+    "openrouter",
+    "product-management"
+  ],
+  "author": "Sairishita Manne",
+  "license": "MIT"
+}

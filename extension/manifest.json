@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "PMPilot — Associate PM Agent",
+  "version": "1.0.0",
+  "description": "Browser PM Research Agent. Watches Notion, Linear, Figma, and competitors to synthesize evidence-backed product decisions.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PMPilot (Associate PM)"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
