@@ -99,12 +99,15 @@ export class AgentOrchestrator {
     const session = await RedisStateManager.getSession(sessionId);
 
     return {
-      title: "Product Requirements Document: AI-Assisted Guest Checkout & Recovery",
+      title: "[SYNTHETIC DEMO PRD] AI-Assisted Guest Checkout & Recovery",
       status: "APPROVED_FOR_DEV",
-      owner: "Associate PM & Moonshot Studio",
+      owner: "Associate PM & Moonshot Studio [Demo]",
       lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       evidenceConfidence: `${session.decisionHealth.confidence}%`,
-      provenanceSummary: "100% traceable to Figma flows, Notion requirements, Linear ENG-142, and Exa market research.",
+      isSyntheticDemo: true,
+      verificationStatus: "SYNTHETIC_DEMO",
+      approvedDecisionVersion: session.version,
+      provenanceSummary: "[SYNTHETIC DEMO] Traceable to synthetic demo Figma flows, Notion requirements, Linear ENG-142, and Exa benchmarks.",
       sections: [
         {
           title: "1. Problem Statement & Opportunity",

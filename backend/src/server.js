@@ -1,11 +1,8 @@
 /**
  * PMPilot Agent Server
- * Connects CopilotKit runtime, OpenAI Agents SDK, Exa, Redis state,
- * Mozilla trust layer, Trigger.dev background jobs, and Cross-Surface Hub
- * (At Work: Slack, Teams, Email, Docs, Calendars, Tickets, Support;
- *  In Your Pocket: Mobile Companion, Push Notifications, 1-Tap Approvals;
- *  On the Web: Autonomous Browser Agent;
- *  Credits & API Key Configuration).
+ * 
+ * Exposes canonical decision lifecycle endpoints and backward-compatible session routes.
+ * Enforces strict human approval checks before delivery artifact generation.
  */
 
 import express from "express";
@@ -17,6 +14,7 @@ import { MozillaTrustEngine } from "./services/mozillaTrust.js";
 import { TriggerJobRunner } from "./jobs/triggerJobs.js";
 import { AgentOrchestrator } from "./agents/orchestrator.js";
 import { CrossSurfaceHub } from "./services/crossSurfaceHub.js";
+import { StateTransitionError } from "./domain/stateMachine.js";
 
 dotenv.config();
 
@@ -31,27 +29,132 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "healthy",
     name: "PMPilot (Associate PM) Agent Engine",
-    version: "2.0.0",
-    sponsors: {
-      copilotKit: "active",
-      openaiAgentsSDK: "active",
-      exa: "active",
-      redis: "active",
-      triggerDev: "active",
-      mozillaAI: "active",
-      openRouter: "active",
-      auth0: "active"
-    },
-    crossSurfaceSurfaces: {
-      atWork: ["Slack", "Microsoft Teams", "Email", "Notion Documents", "Google Calendar", "Linear / Jira", "Zendesk Support", "Live Team Presence"],
-      inYourPocket: ["Mobile Push Alerts", "1-Tap Asynchronous Approvals", "SMS/Telegram Bot"],
-      onTheWeb: ["Autonomous Browser Research", "DOM Table Extraction", "Competitor Navigation", "Automated Issue Filing"]
-    },
+    version: "2.1.0-deterministic-core",
+    authNotice: "No external identity provider configured. User identities are treated as unverified demo metadata.",
     timestamp: new Date().toISOString()
   });
 });
 
-// Get session state
+/* ------------------- CANONICAL DECISION ROUTES ------------------- */
+
+// Get canonical decision record
+app.get("/api/decisions/:id", async (req, res) => {
+  try {
+    const decision = await RedisStateManager.getSession(req.params.id);
+    if (!decision) {
+      return res.status(404).json({ success: false, error: `Decision '${req.params.id}' not found.` });
+    }
+    res.json({ success: true, decision });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Ingest a signal into decision
+app.post("/api/decisions/:id/signals", async (req, res) => {
+  try {
+    const { source, sourceType, rawText, url, capturedBy, category, underlyingCustomerProblem } = req.body;
+    if (!rawText) {
+      return res.status(400).json({ success: false, error: "Signal requires 'rawText' content." });
+    }
+
+    const cleaned = MozillaTrustEngine.cleanContent(rawText);
+    const updatedDecision = await RedisStateManager.ingestSignal(req.params.id, {
+      source: source || "Captured Web Signal",
+      sourceType: sourceType || "WEB_PAGE",
+      rawText: cleaned,
+      url: url || null,
+      capturedBy: capturedBy || "Extension User",
+      category: category || "FEATURE_REQUEST",
+      underlyingCustomerProblem: underlyingCustomerProblem || null
+    });
+
+    res.status(201).json({ success: true, decision: updatedDecision });
+  } catch (err) {
+    const status = err instanceof StateTransitionError ? err.statusCode : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// Resolve a contradiction (Human Action)
+app.post("/api/decisions/:id/conflicts/:conflictId/resolve", async (req, res) => {
+  try {
+    const { resolutionChoiceId, resolutionNotes, decidedBy, expectedVersion } = req.body;
+    if (!resolutionChoiceId) {
+      return res.status(400).json({ success: false, error: "'resolutionChoiceId' is required." });
+    }
+
+    const updatedDecision = await RedisStateManager.resolveConflict(
+      req.params.id,
+      req.params.conflictId,
+      resolutionChoiceId,
+      { name: decidedBy },
+      resolutionNotes,
+      expectedVersion !== undefined && expectedVersion !== null ? Number(expectedVersion) : null
+    );
+
+    res.json({ success: true, decision: updatedDecision });
+  } catch (err) {
+    const status = err instanceof StateTransitionError ? err.statusCode : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// Submit version-bound human approval action (APPROVE, REJECT, REQUEST_REVISION)
+app.post("/api/decisions/:id/approval", async (req, res) => {
+  try {
+    const { action, decisionVersion, rationale, conditions, decidedBy } = req.body;
+    if (!action || decisionVersion === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: 'action' (APPROVE|REJECT|REQUEST_REVISION) and 'decisionVersion' (number)."
+      });
+    }
+
+    const updatedDecision = await RedisStateManager.submitApproval(req.params.id, {
+      action,
+      decisionVersion: Number(decisionVersion),
+      callerIdentity: { name: decidedBy },
+      rationale,
+      conditions
+    });
+
+    res.json({ success: true, decision: updatedDecision });
+  } catch (err) {
+    const status = err instanceof StateTransitionError ? err.statusCode : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// Generate delivery artifacts (Hard-guarded by human approval)
+app.post("/api/decisions/:id/artifacts", async (req, res) => {
+  try {
+    // 1. Guard check: Must have valid human approval at current version
+    await RedisStateManager.guardArtifactGeneration(req.params.id);
+
+    // 2. Mark artifacts generated
+    const current = await RedisStateManager.getRawDecision(req.params.id);
+    const updatedDecision = await RedisStateManager.markArtifactsGenerated(req.params.id, {
+      prd: {
+        title: "[SYNTHETIC DEMO PRD] AI-Assisted Guest Checkout & Cart Recovery",
+        version: "1.0.0",
+        approvedAt: new Date().toISOString(),
+        isSyntheticDemo: true,
+        verificationStatus: "SYNTHETIC_DEMO",
+        approvedDecisionVersion: current?.version || null
+      }
+    }, current?.version || null);
+
+    res.json({ success: true, decision: updatedDecision });
+  } catch (err) {
+    const status = err instanceof StateTransitionError ? err.statusCode : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- LEGACY UI COMPATIBILITY ROUTES ------------------- */
+
+// Legacy session fetch
 app.get("/api/session/:sessionId?", async (req, res) => {
   try {
     const sessionId = req.params.sessionId || "session_moonshot_checkout";
@@ -62,11 +165,11 @@ app.get("/api/session/:sessionId?", async (req, res) => {
   }
 });
 
-// CopilotKit & Associate PM Action handler
+// Legacy action dispatcher with state-machine routing
 app.post("/api/session/:sessionId/action", async (req, res) => {
   try {
     const sessionId = req.params.sessionId || "session_moonshot_checkout";
-    const { action, payload } = req.body;
+    const { action, payload = {} } = req.body;
 
     let responseData = null;
 
@@ -76,7 +179,8 @@ app.post("/api/session/:sessionId/action", async (req, res) => {
         break;
 
       case "shrink_to_mvp":
-        responseData = await AgentOrchestrator.shrinkTo2WeekMVP(sessionId);
+        await RedisStateManager.shrinkToMVP(sessionId);
+        responseData = { success: true, message: "Scoped to lean 2-week MVP." };
         break;
 
       case "create_validation_plan":
@@ -84,49 +188,49 @@ app.post("/api/session/:sessionId/action", async (req, res) => {
         break;
 
       case "generate_prd":
+        await RedisStateManager.guardArtifactGeneration(sessionId);
         responseData = await AgentOrchestrator.generatePRD(sessionId);
+        await RedisStateManager.markArtifactsGenerated(sessionId, { prd: responseData });
         break;
 
       case "resolve_conflict":
-        const { conflictId, resolution } = payload;
-        await RedisStateManager.resolveConflict(sessionId, conflictId, resolution);
-        responseData = { success: true, message: `Conflict ${conflictId} resolved with: ${resolution}` };
+        const conflictId = payload.conflictId;
+        const resolutionChoiceId = payload.resolutionChoiceId || payload.resolution;
+        await RedisStateManager.resolveConflict(
+          sessionId,
+          conflictId,
+          resolutionChoiceId,
+          { name: payload.decidedBy },
+          payload.resolutionNotes,
+          payload.expectedVersion !== undefined && payload.expectedVersion !== null ? Number(payload.expectedVersion) : null
+        );
+        responseData = { success: true, message: `Conflict ${conflictId} resolved with: ${resolutionChoiceId}` };
+        break;
+
+      case "approve_decision":
+        await RedisStateManager.submitApproval(sessionId, {
+          action: payload.action || "APPROVE",
+          decisionVersion: Number(payload.decisionVersion),
+          callerIdentity: { name: payload.decidedBy },
+          rationale: payload.rationale,
+          conditions: payload.conditions
+        });
+        responseData = { success: true, message: "Decision approved by human PM." };
         break;
 
       case "reopen_decision":
-        await RedisStateManager.updateSession(sessionId, (s) => {
-          s.decisionHealth.status = "Reopened decision: Limit comparison to three. Re-evaluating 5-product matrix.";
-          s.decisionHealth.confidence = 82;
-          s.decisionMemory.unshift({
-            id: `mem_${Date.now()}`,
-            date: "SEP 12, 2026",
-            title: "Reopened: Comparison Count Decision",
-            summary: "User reopened decision memory to evaluate user feedback from staged test cohort.",
-            author: "User & Associate PM",
-            status: "REOPENED"
-          });
-          return s;
-        });
+        await RedisStateManager.reopenDecision(sessionId, payload.reason, { name: payload.decidedBy });
         responseData = { success: true, message: "Decision reopened for collaborative synthesis." };
         break;
 
       case "capture_evidence":
-        const { sourceName, sourceType, content, url } = payload || {};
+        const { sourceName, sourceType, content, url } = payload;
         const cleaned = MozillaTrustEngine.cleanContent(content || "");
-        await RedisStateManager.updateSession(sessionId, (s) => {
-          const newSrc = {
-            id: `src_${Date.now()}`,
-            badge: (sourceName || "S")[0].toUpperCase(),
-            name: sourceName || "New Captured Context",
-            type: sourceType || "Web Tab",
-            status: `${sourceType || "Web"} · captured`,
-            url: url || "https://browser.tab/active",
-            timestamp: "Just now",
-            selected: true,
-            extractedContent: cleaned
-          };
-          s.capturedSources.push(newSrc);
-          return s;
+        await RedisStateManager.ingestSignal(sessionId, {
+          source: sourceName || "Web Tab",
+          sourceType: sourceType || "WEB_PAGE",
+          rawText: cleaned,
+          url: url || "https://browser.tab/active"
         });
         responseData = { success: true, message: "Source successfully captured into working memory." };
         break;
@@ -138,8 +242,41 @@ app.post("/api/session/:sessionId/action", async (req, res) => {
     const updatedSession = await RedisStateManager.getSession(sessionId);
     res.json({ success: true, result: responseData, session: updatedSession });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    const status = err instanceof StateTransitionError ? err.statusCode : 500;
+    res.status(status).json({ success: false, error: err.message });
   }
+});
+
+// Guarded PRD async job trigger
+app.post("/api/jobs/prd", async (req, res) => {
+  try {
+    const sessionId = req.body.sessionId || "session_moonshot_checkout";
+
+    // Strictly guard artifact generation: Must have valid human approval at current version!
+    await RedisStateManager.guardArtifactGeneration(sessionId);
+
+    const options = {
+      ...(req.body.options || {}),
+      targetDecisionVersion: req.body.targetDecisionVersion || req.body.options?.decisionVersion
+    };
+    const job = await TriggerJobRunner.startPrdJob(sessionId, options);
+    res.json({ success: true, job });
+  } catch (err) {
+    const status = err instanceof StateTransitionError ? err.statusCode : 403;
+    res.status(status).json({
+      success: false,
+      error: err.message,
+      requiredAction: "Obtain human PM approval at the latest decision version before generating PRD artifacts."
+    });
+  }
+});
+
+app.get("/api/jobs/:jobId/status", (req, res) => {
+  const job = TriggerJobRunner.getJobStatus(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ success: false, error: "Job not found" });
+  }
+  res.json({ success: true, job });
 });
 
 // Exa search endpoint
@@ -153,28 +290,62 @@ app.post("/api/research/competitors", async (req, res) => {
   }
 });
 
-// Trigger.dev async background job endpoints
-app.post("/api/jobs/prd", async (req, res) => {
+/* ------------------- DELIVERY EXPORT ROUTES (GUARDED) ------------------- */
+
+// Guarded Linear sprint backlog export
+app.post("/api/export/linear", async (req, res) => {
   try {
-    const { sessionId, options } = req.body;
-    const job = await TriggerJobRunner.startPrdJob(sessionId || "session_moonshot_checkout", options);
-    res.json({ success: true, job });
+    const { decisionId, tickets } = req.body;
+    const targetId = decisionId || "session_moonshot_checkout";
+
+    // Strictly guard downstream export: Decision must have valid human approval
+    await RedisStateManager.guardArtifactGeneration(targetId);
+
+    res.json({
+      success: true,
+      service: "Linear",
+      status: "DEMO_STUB_READY",
+      message: "Delivery export authorized. LINEAR_API_KEY is unconfigured in demo environment.",
+      ticketCount: Array.isArray(tickets) ? tickets.length : 4,
+      isDemoMode: true
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    const status = err instanceof StateTransitionError ? err.statusCode : 403;
+    res.status(status).json({
+      success: false,
+      error: err.message,
+      requiredAction: "Obtain human PM approval at current decision version before exporting to Linear."
+    });
   }
 });
 
-app.get("/api/jobs/:jobId/status", (req, res) => {
-  const job = TriggerJobRunner.getJobStatus(req.params.jobId);
-  if (!job) {
-    return res.status(404).json({ success: false, error: "Job not found" });
+// Guarded Slack product release broadcast
+app.post("/api/export/slack", async (req, res) => {
+  try {
+    const { decisionId, channel, message } = req.body;
+    const targetId = decisionId || "session_moonshot_checkout";
+
+    // Strictly guard downstream export: Decision must have valid human approval
+    await RedisStateManager.guardArtifactGeneration(targetId);
+
+    const result = await CrossSurfaceHub.triggerSlackNotification(channel, message);
+    res.json({
+      ...result,
+      status: "SIMULATED_NOTIFICATION_SENT",
+      isDemoMode: true
+    });
+  } catch (err) {
+    const status = err instanceof StateTransitionError ? err.statusCode : 403;
+    res.status(status).json({
+      success: false,
+      error: err.message,
+      requiredAction: "Obtain human PM approval at current decision version before sharing to Slack."
+    });
   }
-  res.json({ success: true, job });
 });
 
-/* ------------------- CROSS-SURFACE HUB ENDPOINTS ------------------- */
+/* ------------------- CROSS-SURFACE HUB ENDPOINTS (STUBS) ------------------- */
 
-// Hub overview & active integrations status
 app.get("/api/hub/status", (req, res) => {
   res.json({
     success: true,
@@ -185,61 +356,52 @@ app.get("/api/hub/status", (req, res) => {
   });
 });
 
-// At Work: Slack trigger
 app.post("/api/hub/slack", async (req, res) => {
   const { channel, message } = req.body;
   const result = await CrossSurfaceHub.triggerSlackNotification(channel, message);
   res.json(result);
 });
 
-// At Work: Teams trigger
 app.post("/api/hub/teams", async (req, res) => {
   const { channel } = req.body;
   const result = await CrossSurfaceHub.triggerTeamsCard(channel);
   res.json(result);
 });
 
-// At Work: Email digest
 app.post("/api/hub/email", async (req, res) => {
   const { recipient } = req.body;
   const result = await CrossSurfaceHub.sendEmailDigest(recipient);
   res.json(result);
 });
 
-// At Work: Notion export
 app.post("/api/hub/notion", async (req, res) => {
   const { title } = req.body;
   const result = await CrossSurfaceHub.exportToNotionDoc(title);
   res.json(result);
 });
 
-// At Work: Google Calendar schedule
 app.post("/api/hub/calendar", async (req, res) => {
   const { experimentName } = req.body;
   const result = await CrossSurfaceHub.scheduleCalendarInterview(experimentName);
   res.json(result);
 });
 
-// In Your Pocket: Mobile notifications
 app.get("/api/hub/pocket/notifications", (req, res) => {
   res.json({ success: true, notifications: CrossSurfaceHub.getPocketNotifications() });
 });
 
-// In Your Pocket: 1-Tap approval from mobile
 app.post("/api/hub/pocket/approve", async (req, res) => {
   const { notificationId, choice } = req.body;
   const result = await CrossSurfaceHub.executePocketApproval(notificationId, choice);
   res.json(result);
 });
 
-// On The Web: Browser agent automation
 app.post("/api/hub/web/automate", async (req, res) => {
   const { task } = req.body;
   const result = await CrossSurfaceHub.runWebAutomationAction(task);
   res.json(result);
 });
 
-// Settings: Live API Keys & Credits
 app.get("/api/hub/settings/keys", (req, res) => {
   res.json({ success: true, keys: CrossSurfaceHub.getApiKeysStatus() });
 });
@@ -250,8 +412,12 @@ app.post("/api/hub/settings/keys", (req, res) => {
   res.json(result);
 });
 
-app.listen(PORT, () => {
-  console.log(`[PMPilot Agent Server] Running on http://localhost:${PORT}`);
-  console.log(`[CopilotKit Runtime] Ready at http://localhost:${PORT}/api/copilotkit`);
-  console.log(`[Cross-Surface Hub] Active on http://localhost:${PORT}/api/hub/status`);
-});
+export default app;
+
+const isMainModule = process.argv[1] && (process.argv[1].endsWith("server.js") || process.argv[1].endsWith("server"));
+if (isMainModule) {
+  app.listen(PORT, () => {
+    console.log(`[PMPilot Agent Server] Running on http://localhost:${PORT}`);
+    console.log(`[Canonical Lifecycle Engine] Active on http://localhost:${PORT}/api/decisions/:id`);
+  });
+}

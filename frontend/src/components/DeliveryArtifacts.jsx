@@ -1,37 +1,83 @@
-import React, { useState } from 'react';
-import { FileText, CheckCircle, ExternalLink, Send, ArrowRight, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CheckCircle, ExternalLink, Send, Lock, ShieldCheck, AlertTriangle } from 'lucide-react';
 
-export default function DeliveryArtifacts({ prd, onExportLinear, onExportSlack }) {
+export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
   const [activeTab, setActiveTab] = useState('prd');
   const [exportLinearStatus, setExportLinearStatus] = useState(null);
   const [exportSlackStatus, setExportSlackStatus] = useState(null);
 
+  const {
+    id: sessionId = 'session_moonshot_checkout',
+    status = 'CONFLICT_REVIEW',
+    version = 1,
+    approvalRecord
+  } = session || {};
+
+  const isApproved = (status === 'APPROVED' || status === 'ARTIFACT_GENERATED') && approvalRecord?.status === 'APPROVED';
+  const isRevisionRequired = status === 'NEEDS_REVISION';
+
+  // Reset export confirmation when approval is invalidated or relocked
+  useEffect(() => {
+    if (!isApproved) {
+      setExportLinearStatus(null);
+      setExportSlackStatus(null);
+    }
+  }, [isApproved]);
+
   const handleExportLinear = async () => {
+    if (!isApproved) {
+      alert("Delivery export is locked. Human PM approval is required before syncing to Linear.");
+      return;
+    }
     setExportLinearStatus('syncing');
     try {
       const res = await fetch('http://localhost:4000/api/export/linear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tickets: prd?.sections?.find(s => s.tickets)?.tickets })
+        body: JSON.stringify({
+          decisionId: sessionId,
+          tickets: prd?.sections?.find(s => s.tickets)?.tickets
+        })
       });
       const data = await res.json();
-      setExportLinearStatus('success');
+      if (res.ok && data.success) {
+        setExportLinearStatus('success');
+      } else {
+        setExportLinearStatus('error');
+        alert(`Linear export rejected: ${data.error || 'Server rejected export'}`);
+      }
     } catch (err) {
-      setExportLinearStatus('success');
+      setExportLinearStatus('error');
+      alert(`Linear export network error: ${err.message}`);
     }
   };
 
   const handleExportSlack = async () => {
+    if (!isApproved) {
+      alert("Delivery export is locked. Human PM approval is required before sharing to Slack.");
+      return;
+    }
     setExportSlackStatus('syncing');
     try {
       const res = await fetch('http://localhost:4000/api/export/slack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: '#product-announcements', message: 'Associate PM PRD v1.0 green-lit.' })
+        body: JSON.stringify({
+          decisionId: sessionId,
+          channel: '#product-announcements',
+          message: `Associate PM PRD v${version} green-lit. Delivery artifacts ready for sprint review.`
+        })
       });
-      setExportSlackStatus('success');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setExportSlackStatus('success');
+      } else {
+        setExportSlackStatus('error');
+        alert(`Slack export rejected: ${data.error || 'Server rejected export'}`);
+      }
     } catch (err) {
-      setExportSlackStatus('success');
+      setExportSlackStatus('error');
+      alert(`Slack export network error: ${err.message}`);
     }
   };
 
@@ -71,44 +117,138 @@ export default function DeliveryArtifacts({ prd, onExportLinear, onExportSlack }
         {/* Export Buttons */}
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
+            data-export-btn="linear"
             onClick={handleExportLinear}
+            disabled={!isApproved}
+            title={!isApproved ? "Locked: Awaiting human approval" : "Push tickets to Linear (Demo Mode)"}
             style={{
-              background: exportLinearStatus === 'success' ? '#dcfce7' : '#12261e',
-              color: exportLinearStatus === 'success' ? '#15803d' : '#ffffff',
+              background: !isApproved ? '#e5e8e1' : exportLinearStatus === 'success' ? '#dcfce7' : exportLinearStatus === 'error' ? '#fee2e2' : '#12261e',
+              color: !isApproved ? '#718379' : exportLinearStatus === 'success' ? '#15803d' : exportLinearStatus === 'error' ? '#991b1b' : '#ffffff',
               border: 'none',
               borderRadius: '8px',
               padding: '8px 14px',
               fontSize: '12.5px',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: !isApproved ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '6px',
+              opacity: !isApproved ? 0.75 : 1
             }}
           >
-            {exportLinearStatus === 'success' ? <CheckCircle size={14} /> : <ExternalLink size={14} />}
-            <span>{exportLinearStatus === 'success' ? 'Synced to Linear' : 'Push to Linear'}</span>
+            {!isApproved ? <Lock size={14} /> : exportLinearStatus === 'success' ? <CheckCircle size={14} /> : <ExternalLink size={14} />}
+            <span>{exportLinearStatus === 'success' ? 'Validated for Linear (Demo)' : exportLinearStatus === 'error' ? 'Linear Export Failed' : 'Push to Linear (Demo)'}</span>
           </button>
 
           <button
+            data-export-btn="slack"
             onClick={handleExportSlack}
+            disabled={!isApproved}
+            title={!isApproved ? "Locked: Awaiting human approval" : "Share announcement to Slack (Demo Mode)"}
             style={{
-              background: exportSlackStatus === 'success' ? '#dcfce7' : '#4a154b',
-              color: exportSlackStatus === 'success' ? '#15803d' : '#ffffff',
+              background: !isApproved ? '#e5e8e1' : exportSlackStatus === 'success' ? '#dcfce7' : exportSlackStatus === 'error' ? '#fee2e2' : '#4a154b',
+              color: !isApproved ? '#718379' : exportSlackStatus === 'success' ? '#15803d' : exportSlackStatus === 'error' ? '#991b1b' : '#ffffff',
               border: 'none',
               borderRadius: '8px',
               padding: '8px 14px',
               fontSize: '12.5px',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: !isApproved ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '6px',
+              opacity: !isApproved ? 0.75 : 1
             }}
           >
-            <Send size={14} />
-            <span>{exportSlackStatus === 'success' ? 'Notified #product' : 'Share to Slack'}</span>
+            {!isApproved ? <Lock size={14} /> : exportSlackStatus === 'success' ? <CheckCircle size={14} /> : <Send size={14} />}
+            <span>{exportSlackStatus === 'success' ? 'Notified #product (Demo)' : exportSlackStatus === 'error' ? 'Slack Failed' : 'Share to Slack (Demo)'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Approval Status Banner */}
+      <div style={{
+        background: isApproved ? '#f0fdf4' : isRevisionRequired ? '#fdf4ff' : '#fffbeb',
+        border: `1px solid ${isApproved ? '#bbf7d0' : isRevisionRequired ? '#f5d0fe' : '#fde68a'}`,
+        borderRadius: '10px',
+        padding: '14px 18px',
+        marginBottom: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '10px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {isApproved ? (
+            <ShieldCheck size={20} color="#166534" />
+          ) : isRevisionRequired ? (
+            <AlertTriangle size={20} color="#86198f" />
+          ) : (
+            <Lock size={20} color="#92400e" />
+          )}
+          <div>
+            <div style={{
+              fontSize: '13px',
+              fontWeight: 700,
+              color: isApproved ? '#166534' : isRevisionRequired ? '#86198f' : '#92400e'
+            }}>
+              {isApproved
+                ? `Delivery Unlocked · Approved for Version ${approvalRecord?.approvedDecisionVersion || version}`
+                : isRevisionRequired
+                ? `Re-approval Required · Decision Version ${version}`
+                : `Delivery Pipeline Locked · Awaiting Human Approval (v${version})`}
+            </div>
+            <div style={{
+              fontSize: '12px',
+              color: isApproved ? '#15803d' : isRevisionRequired ? '#701a75' : '#78350f',
+              marginTop: '2px'
+            }}>
+              {isApproved ? (
+                <>
+                  Approved by <strong>{approvalRecord?.decidedBy || 'Human PM'}</strong> [Demo Identity] at {approvalRecord?.decidedAt ? new Date(approvalRecord.decidedAt).toLocaleTimeString() : 'Recent'}.
+                  {approvalRecord?.conditions?.length > 0 && ` Conditions: ${approvalRecord.conditions.join(', ')}`}
+                </>
+              ) : isRevisionRequired ? (
+                approvalRecord?.invalidationReason || `A decision mutation invalidated the prior approval. Re-approval on version ${version} is required before exporting artifacts.`
+              ) : (
+                `Downstream ticket export and production PRD release require an explicit human PM approval record bound to decision version ${version}.`
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            background: isApproved ? '#dcfce7' : isRevisionRequired ? '#fae8ff' : '#fef3c7',
+            color: isApproved ? '#166534' : isRevisionRequired ? '#86198f' : '#92400e',
+            padding: '4px 10px',
+            borderRadius: '9999px',
+            letterSpacing: '0.4px',
+            textTransform: 'uppercase'
+          }}>
+            {isApproved ? '✓ AUDIT RECORD VALID' : isRevisionRequired ? 'REVISION PENDING' : 'APPROVAL PENDING'}
+          </div>
+          {isApproved && onReopenDecision && (
+            <button
+              onClick={onReopenDecision}
+              title="Make material change: increments version and returns approval locks"
+              style={{
+                background: 'transparent',
+                color: '#166534',
+                border: '1px solid #86efac',
+                borderRadius: '8px',
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Reopen Decision
+            </button>
+          )}
         </div>
       </div>
 
@@ -175,14 +315,14 @@ export default function DeliveryArtifacts({ prd, onExportLinear, onExportSlack }
           }}>
             <div>
               <div style={{ fontSize: '15px', fontWeight: 700, color: '#131916' }}>
-                AI-Assisted Guest Checkout & Recovery
+                [SYNTHETIC DEMO] AI-Assisted Guest Checkout & Recovery
               </div>
               <div style={{ fontSize: '12px', color: '#687a70', marginTop: '2px' }}>
-                Status: <strong>READY FOR SPRINT LOCK</strong> · Confidence: <strong>96%</strong>
+                Status: <strong>READY FOR SPRINT LOCK</strong> · Confidence: <strong>96%</strong> · [Synthetic Fixture]
               </div>
             </div>
-            <span style={{ fontSize: '11px', background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: '9999px', fontWeight: 700 }}>
-              MOZILLA TRUST VERIFIED
+            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '9999px', fontWeight: 700, border: '1px solid #fde68a' }}>
+              SYNTHETIC DEMO SPEC
             </span>
           </div>
 

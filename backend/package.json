@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/decisionLifecycle.test.js",
+    "test:http": "node --test test/serverEndpoints.test.js",
+    "test:all": "node --test test/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

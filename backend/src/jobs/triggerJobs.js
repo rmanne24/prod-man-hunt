@@ -6,6 +6,8 @@
  * - Deep Market Exa Ingestion
  */
 
+import { RedisStateManager } from "../services/redisState.js";
+
 export class TriggerJobRunner {
   static activeJobs = new Map();
 
@@ -15,9 +17,15 @@ export class TriggerJobRunner {
   static async startPrdJob(sessionId, options = {}) {
     const jobId = `trig_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
+    const currentDecision = await RedisStateManager.getRawDecision(sessionId);
+    const targetDecisionVersion = options.targetDecisionVersion !== undefined
+      ? Number(options.targetDecisionVersion)
+      : currentDecision?.version || null;
+
     const initialJob = {
       jobId,
       sessionId,
+      targetDecisionVersion,
       type: "PRD_GENERATION",
       status: "queued",
       progress: 0,
@@ -37,7 +45,7 @@ export class TriggerJobRunner {
     this.activeJobs.set(jobId, initialJob);
 
     // Run async steps simulation/worker
-    this.runJobPipeline(jobId, sessionId, options);
+    this.runJobPipeline(jobId, sessionId, options, targetDecisionVersion);
 
     return initialJob;
   }
@@ -46,7 +54,7 @@ export class TriggerJobRunner {
     return this.activeJobs.get(jobId) || null;
   }
 
-  static async runJobPipeline(jobId, sessionId, options) {
+  static async runJobPipeline(jobId, sessionId, options, targetDecisionVersion) {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const job = this.activeJobs.get(jobId);
     if (!job) return;
@@ -98,14 +106,30 @@ export class TriggerJobRunner {
       job.status = "completed";
       job.completedAt = new Date().toISOString();
       job.result = {
-        title: "PRD: AI-Assisted Guest Checkout & Cart Recovery",
+        title: "[SYNTHETIC DEMO PRD] AI-Assisted Guest Checkout & Cart Recovery",
         version: "1.0.0-MVP",
         confidence: 96,
         summary: "Evidence-backed product spec synthesized from Figma, Notion, Linear, and Exa market research.",
         userStoriesCount: 6,
         linearTicketsCount: 8,
-        sprintDuration: "2 Weeks"
+        sprintDuration: "2 Weeks",
+        isSyntheticDemo: true,
+        verificationStatus: "SYNTHETIC_DEMO",
+        approvedDecisionVersion: targetDecisionVersion
       };
+
+      try {
+        const current = await RedisStateManager.getRawDecision(sessionId);
+        if (targetDecisionVersion !== null && current && current.version !== targetDecisionVersion) {
+          job.status = "superseded";
+          job.error = `Decision version advanced from v${targetDecisionVersion} to v${current.version} before job completion. Artifacts discarded.`;
+        } else {
+          await RedisStateManager.markArtifactsGenerated(sessionId, { prd: job.result }, targetDecisionVersion);
+        }
+      } catch (markErr) {
+        job.status = "failed";
+        job.error = markErr.message;
+      }
     } catch (err) {
       job.status = "failed";
       job.error = err.message;

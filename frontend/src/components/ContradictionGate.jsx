@@ -78,7 +78,7 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
           marginBottom: '16px'
         }}>
           {isResolved
-            ? `Resolved with: ${activeConflict.chosenResolution || 'Limit to 3 (Figma UX pattern)'}. Provenance logged to decision memory.`
+            ? `Resolved with: ${typeof activeConflict.chosenResolution === 'object' ? (activeConflict.chosenResolution?.choiceLabel || activeConflict.chosenResolution?.resolutionChoiceId) : (activeConflict.chosenResolution || 'Limit to 3 (Figma UX pattern)')}${activeConflict.chosenResolution?.resolvedAtVersion ? ` (v${activeConflict.chosenResolution.resolvedAtVersion})` : ''}. Provenance logged to decision memory.`
             : activeConflict.detail}
         </p>
       </div>
@@ -86,41 +86,68 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
       {/* Action Buttons */}
       {!isResolved ? (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => handleResolve("Limit to 3 (Figma UX pattern)")}
-            disabled={resolvingId !== null}
-            style={{
-              background: '#0e261d',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '11.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <span>Resolve with 3 (Figma)</span>
-          </button>
-          <button
-            onClick={() => handleResolve("Expand to 5 (Linear request)")}
-            disabled={resolvingId !== null}
-            style={{
-              background: 'transparent',
-              color: '#34493e',
-              border: '1px solid #d1dbd4',
-              borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '11.5px',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            <span>Resolve with 5 (Linear)</span>
-          </button>
+          {activeConflict.suggestedResolutions && activeConflict.suggestedResolutions.length > 0 ? (
+            activeConflict.suggestedResolutions.map((resOption) => (
+              <button
+                key={resOption.id}
+                onClick={() => handleResolve(resOption.id)}
+                disabled={resolvingId !== null}
+                style={{
+                  background: resOption.recommended ? '#0e261d' : 'transparent',
+                  color: resOption.recommended ? '#ffffff' : '#34493e',
+                  border: resOption.recommended ? 'none' : '1px solid #d1dbd4',
+                  borderRadius: '8px',
+                  padding: '7px 12px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  cursor: resolvingId !== null ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>{resOption.recommended ? `★ ${resOption.label}` : resOption.label}</span>
+              </button>
+            ))
+          ) : (
+            <>
+              <button
+                onClick={() => handleResolve("res_3")}
+                disabled={resolvingId !== null}
+                style={{
+                  background: '#0e261d',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '7px 12px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  cursor: resolvingId !== null ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>Resolve with 3 (Figma)</span>
+              </button>
+              <button
+                onClick={() => handleResolve("res_5")}
+                disabled={resolvingId !== null}
+                style={{
+                  background: 'transparent',
+                  color: '#34493e',
+                  border: '1px solid #d1dbd4',
+                  borderRadius: '8px',
+                  padding: '7px 12px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  cursor: resolvingId !== null ? 'not-allowed' : 'pointer'
+                }}
+              >
+                <span>Resolve with 5 (Linear)</span>
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div style={{

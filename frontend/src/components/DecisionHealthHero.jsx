@@ -1,7 +1,12 @@
 import React from 'react';
 import { ShieldCheck, AlertTriangle, HelpCircle } from 'lucide-react';
 
-export default function DecisionHealthHero({ health }) {
+export default function DecisionHealthHero({
+  health,
+  status: decisionStatus = 'CONFLICT_REVIEW',
+  version = 1,
+  approvalRecord
+}) {
   const {
     status = "Promising direction. Resolve two conflicts first.",
     detail = "The guest-checkout decision is evidence-backed, but customer validation and scope clarity are still missing.",
@@ -9,6 +14,9 @@ export default function DecisionHealthHero({ health }) {
     conflictsCount = 2,
     riskyAssumptionsCount = 1
   } = health || {};
+
+  const isApproved = (decisionStatus === 'APPROVED' || decisionStatus === 'ARTIFACT_GENERATED') && approvalRecord?.status === 'APPROVED';
+  const isRevision = decisionStatus === 'NEEDS_REVISION';
 
   return (
     <div style={{
@@ -28,15 +36,27 @@ export default function DecisionHealthHero({ health }) {
     }}>
       {/* Left Column */}
       <div style={{ maxWidth: '580px' }}>
-        <div style={{
-          fontSize: '11px',
-          fontWeight: 800,
-          letterSpacing: '1px',
-          color: '#34d399',
-          textTransform: 'uppercase',
-          marginBottom: '10px'
-        }}>
-          DECISION HEALTH
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+          <div style={{
+            fontSize: '11px',
+            fontWeight: 800,
+            letterSpacing: '1px',
+            color: '#34d399',
+            textTransform: 'uppercase'
+          }}>
+            DECISION HEALTH
+          </div>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: 800,
+            padding: '2px 8px',
+            borderRadius: '9999px',
+            background: isApproved ? '#064e3b' : isRevision ? '#3b0764' : '#451a03',
+            color: isApproved ? '#6ee7b7' : isRevision ? '#e9d5ff' : '#fde68a',
+            border: `1px solid ${isApproved ? '#047857' : isRevision ? '#7e22ce' : '#b45309'}`
+          }}>
+            {isApproved ? `✓ APPROVED (v${version})` : isRevision ? `⚠️ REVISION REQ (v${version})` : `🔒 AWAITING APPROVAL (v${version})`}
+          </span>
         </div>
         <h2 style={{
           fontSize: '22px',

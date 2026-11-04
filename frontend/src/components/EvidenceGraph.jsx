@@ -103,6 +103,7 @@ export default function EvidenceGraph({ nodes = [], onNodeClick }) {
           return (
             <React.Fragment key={node.id}>
               <div
+                data-node-id={node.id}
                 onClick={() => {
                   setSelectedNodeId(node.id);
                   if (onNodeClick) onNodeClick(node);
@@ -228,6 +229,28 @@ export default function EvidenceGraph({ nodes = [], onNodeClick }) {
             <span>·</span>
             <span><strong>Provenance:</strong> {selectedNode.provenance}</span>
           </div>
+
+          {selectedNode.sources?.length > 0 && selectedNode.sources.some(s => s.verbatimExcerpt) && (
+            <div style={{
+              marginTop: '10px',
+              padding: '8px 12px',
+              background: '#ffffff',
+              borderRadius: '6px',
+              border: '1px dashed #c2d4c6',
+              fontSize: '11px',
+              color: '#283830'
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: '4px', color: '#166534' }}>
+                Verbatim Source Excerpt(s):
+              </div>
+              {selectedNode.sources.map((s, idx) => (
+                <div key={idx} style={{ marginTop: idx > 0 ? '4px' : '0' }}>
+                  <span style={{ fontStyle: 'italic', color: '#111827' }}>"{s.verbatimExcerpt}"</span>
+                  <span style={{ color: '#657a6e', marginLeft: '6px' }}>— {s.sourceLabel}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
