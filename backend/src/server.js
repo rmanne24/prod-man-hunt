@@ -511,11 +511,21 @@ app.post("/api/integrations/switch/register", requireWorkspaceMember, requireRea
   }
 });
 
-// Get Switch Room mapped to decision
-app.get("/api/workspaces/:workspaceId/decisions/:decisionId/switch/room", requireWorkspaceMember, (req, res) => {
+// Get Switch Room mapped to decision (auto-syncs to current canonical decision version)
+app.get("/api/workspaces/:workspaceId/decisions/:decisionId/switch/room", requireWorkspaceMember, async (req, res) => {
   try {
-    const room = db.getSwitchRoom(req.params.workspaceId, req.params.decisionId);
+    const room = await switchService.getRoomForDecision(req.params.workspaceId, req.params.decisionId);
     res.json({ success: true, room: room || null });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Force sync Switch Room context to latest canonical decision version
+app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/room/sync", requireWorkspaceMember, async (req, res) => {
+  try {
+    const room = await switchService.getRoomForDecision(req.params.workspaceId, req.params.decisionId);
+    res.json({ success: true, room });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -536,15 +546,36 @@ app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/room", requi
   }
 });
 
+// Get room messages (returns persistent SQLite messages with honest simulation tags)
+app.get("/api/workspaces/:workspaceId/decisions/:decisionId/switch/messages", requireWorkspaceMember, (req, res) => {
+  try {
+    const { workspaceId, decisionId } = req.params;
+    const { roomId } = req.query;
+    const messages = switchService.getMessagesForDecision({ workspaceId, decisionId, roomId });
+    res.json({ success: true, messages });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Post a message / briefing update to the Switch room
 app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/message", requireWorkspaceMember, async (req, res) => {
   try {
+    const { workspaceId, decisionId } = req.params;
     const { roomId, content } = req.body;
     if (!roomId || !content) {
       return res.status(400).json({ success: false, error: "Both 'roomId' and 'content' are required." });
     }
-    const result = await switchService.postMessageToRoom({ roomId, content });
-    res.json({ success: true, ...result });
+    const sender = req.user && !req.user.isDemo ? req.user.name : (req.body.sender || 'Human PM [Demo UI]');
+    const result = await switchService.postMessageToRoom({
+      workspaceId,
+      decisionId,
+      roomId,
+      content,
+      sender,
+      role: 'USER'
+    });
+    res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: switchService.sanitizeMessage(err.message) });
   }

@@ -220,16 +220,41 @@ class SwitchService {
   }
 
   /**
+   * Retrieves the mapped Switch room for a decision and auto-synchronizes
+   * the room's safe context and version if the canonical decision version has advanced.
+   */
+  async getRoomForDecision(workspaceId, decisionId) {
+    if (!workspaceId || !decisionId) return null;
+    const room = db.getSwitchRoom(workspaceId, decisionId);
+    if (!room) return null;
+
+    // Check if canonical decision has a newer version or updated status
+    const decision = await RedisStateManager.getRawDecision(decisionId);
+    if (decision && (decision.version !== room.shared_at_version || decision.status !== room.shared_context?.status)) {
+      const refreshedContext = this.buildSafeDecisionContext(decision);
+      const updated = db.saveSwitchRoom({
+        ...room,
+        workspaceId,
+        decisionId,
+        sharedContext: refreshedContext,
+        sharedAtVersion: decision.version
+      });
+      return updated;
+    }
+    return room;
+  }
+
+  /**
    * Creates or retrieves a mapped Switch room for a PMPilot decision.
-   * Enforces idempotency to avoid duplicate room creation on retry.
+   * Enforces idempotency and ensures safe context reflects latest version.
    */
   async getOrCreateRoomForDecision({ workspaceId, decisionId, userId }) {
     if (!workspaceId || !decisionId) {
       throw new Error('workspaceId and decisionId are required.');
     }
 
-    // 1. Check SQLite for existing mapped room (idempotency guard)
-    const existing = db.getSwitchRoom(workspaceId, decisionId);
+    // 1. Check SQLite for existing mapped room (idempotency guard with auto-sync)
+    const existing = await this.getRoomForDecision(workspaceId, decisionId);
     if (existing && existing.status === 'ACTIVE') {
       return {
         ...existing,
@@ -323,60 +348,135 @@ class SwitchService {
   }
 
   /**
-   * Posts a message to a Switch room via POST /agents/{agent_id}/message
-   * Wire Spec: https://docs.switchagents.ai/switch-rooms/internals/agent-protocol
+   * Retrieves messages for a decision collaboration room.
+   * If no messages exist yet, seeds an initial discussion thread labeled as simulated demo data.
    */
-  async postMessageToRoom({ roomId, content }) {
+  getMessagesForDecision({ workspaceId, decisionId, roomId }) {
+    if (!workspaceId || !decisionId) return [];
+    let messages = db.getSwitchMessages(workspaceId, decisionId);
+
+    if (messages.length === 0) {
+      const now = Date.now();
+      const seeds = [
+        {
+          id: `msg_seed_1_${decisionId}`,
+          workspaceId,
+          decisionId,
+          roomId: roomId || 'sw_room_default',
+          sender: 'Switch Fabric',
+          role: 'SYSTEM',
+          content: 'Room mapped to Decision. PMPilot Decision Assistant connected via Switch Agent Protocol.',
+          isSimulated: 1,
+          createdAt: new Date(now - 600000).toISOString()
+        },
+        {
+          id: `msg_seed_2_${decisionId}`,
+          workspaceId,
+          decisionId,
+          roomId: roomId || 'sw_room_default',
+          sender: 'Security Lead',
+          role: 'TEAMMATE',
+          content: 'Reviewed the guest checkout telemetry. We need to cap guest comparison to 3 items and add fraud friction for orders over $150.',
+          isSimulated: 1,
+          createdAt: new Date(now - 300000).toISOString()
+        },
+        {
+          id: `msg_seed_3_${decisionId}`,
+          workspaceId,
+          decisionId,
+          roomId: roomId || 'sw_room_default',
+          sender: 'PMPilot Decision Assistant',
+          role: 'AGENT',
+          content: 'Noted. Contradiction between frictionless conversion vs chargeback risk is active in Decision. Formulating structured proposal with revised fraud rules.',
+          isSimulated: 1,
+          createdAt: new Date(now - 120000).toISOString()
+        }
+      ];
+
+      for (const s of seeds) {
+        db.saveSwitchMessage(s);
+      }
+      messages = db.getSwitchMessages(workspaceId, decisionId);
+    }
+
+    return messages;
+  }
+
+  /**
+   * Posts a message to a Switch room via POST /agents/{agent_id}/message.
+   * If live credentials are unconfigured or offline, records into SQLite with honest is_simulated: 1.
+   */
+  async postMessageToRoom({ workspaceId, decisionId, roomId, content, sender = 'PM', role = 'USER' }) {
     if (!roomId || !content) {
       throw new Error('roomId and content are required.');
     }
 
+    const cleanContent = this.sanitizeMessage(content);
     const serverUrl = this.getServerUrl();
     const apiKey = this.getAgentApiKey();
     const agentId = this.getAgentId();
+    let delivered = false;
+    let liveError = null;
 
-    if (!apiKey) {
-      return {
-        success: false,
-        delivered: false,
-        reason: 'SWITCH_AGENT_API_KEY is not configured.'
-      };
-    }
+    if (apiKey) {
+      try {
+        const res = await fetch(`${serverUrl}/agents/${agentId}/message`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            room_id: roomId,
+            content: cleanContent
+          })
+        });
 
-    try {
-      const res = await fetch(`${serverUrl}/agents/${agentId}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          room_id: roomId,
-          content
-        })
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        return {
-          success: false,
-          delivered: false,
-          error: this.sanitizeMessage(err)
-        };
+        if (res.ok) {
+          delivered = true;
+        } else {
+          liveError = await res.text();
+        }
+      } catch (err) {
+        liveError = err.message;
       }
-
-      return {
-        success: true,
-        delivered: true,
-        timestamp: new Date().toISOString()
-      };
-    } catch (err) {
-      return {
-        success: false,
-        delivered: false,
-        error: this.sanitizeMessage(err.message)
-      };
     }
+
+    // Persist user message in SQLite
+    const savedUserMsg = db.saveSwitchMessage({
+      workspaceId,
+      decisionId,
+      roomId,
+      sender: sender || 'PM',
+      role: role || 'USER',
+      content: cleanContent,
+      isSimulated: delivered ? 0 : 1
+    });
+
+    // If Switch server is unconfigured or offline, generate an honest simulated assistant acknowledgement
+    let savedReplyMsg = null;
+    if (!delivered) {
+      const replyContent = `Noted. Context received in evaluation thread: "${cleanContent.slice(0, 60)}${cleanContent.length > 60 ? '...' : ''}". Grounded in current canonical decision version.`;
+      savedReplyMsg = db.saveSwitchMessage({
+        workspaceId,
+        decisionId,
+        roomId,
+        sender: 'PMPilot Decision Assistant',
+        role: 'AGENT',
+        content: replyContent,
+        isSimulated: 1
+      });
+    }
+
+    return {
+      success: true,
+      delivered,
+      isSimulated: !delivered,
+      reason: delivered ? null : (apiKey ? `Switch server error: ${this.sanitizeMessage(liveError)}` : 'SWITCH_AGENT_API_KEY is not configured. Running in evaluator simulation mode.'),
+      userMessage: savedUserMsg,
+      replyMessage: savedReplyMsg,
+      timestamp: new Date().toISOString()
+    };
   }
 
   /**
@@ -487,6 +587,19 @@ class SwitchService {
     // 5. Mark any other pending proposals for older version as STALE
     db.markStaleSwitchProposals(workspaceId, proposal.decision_id, mutatedDecision.version);
 
+    // 6. Synchronize mapped Switch room in SQLite with the newly mutated decision version and safe context
+    const existingRoom = db.getSwitchRoom(workspaceId, proposal.decision_id);
+    if (existingRoom) {
+      const refreshedContext = this.buildSafeDecisionContext(mutatedDecision);
+      db.saveSwitchRoom({
+        ...existingRoom,
+        workspaceId,
+        decisionId: proposal.decision_id,
+        sharedContext: refreshedContext,
+        sharedAtVersion: mutatedDecision.version
+      });
+    }
+
     return {
       success: true,
       proposalId,
@@ -519,3 +632,4 @@ class SwitchService {
 }
 
 export const switchService = new SwitchService();
+

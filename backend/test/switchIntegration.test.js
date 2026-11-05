@@ -308,3 +308,75 @@ test('VERSION GUARD: Stale proposals are rejected when decision version has adva
   const updatedProposal = proposals.find(p => p.id === proposalV1.id);
   assert.equal(updatedProposal.status, 'STALE');
 });
+
+test('ROOM VERSION SYNC: Room context auto-synchronizes to current canonical decision version', async () => {
+  const decisionId = `test_dec_sync_${Date.now()}`;
+  const workspaceId = 'ws_moonshot';
+
+  const record = createDecisionRecord({
+    id: decisionId,
+    title: 'Version Sync Decision',
+    workspace: workspaceId
+  });
+  record.workspaceId = workspaceId;
+  record.status = DECISION_STATES.RECOMMENDATION_READY;
+  await RedisStateManager.saveDecision(record);
+
+  // 1. Create room for v1
+  const initialRoom = await switchService.getOrCreateRoomForDecision({
+    workspaceId,
+    decisionId,
+    userId: 'usr_pm'
+  });
+  assert.equal(initialRoom.shared_at_version, 1);
+
+  // 2. Canonical decision is mutated to version 2
+  await RedisStateManager.reopenDecision(decisionId, 'PM Team Revision');
+  const mutated = await RedisStateManager.getRawDecision(decisionId);
+  assert.equal(mutated.version, 2);
+
+  // 3. getRoomForDecision detects version advance and updates room record in SQLite
+  const syncedRoom = await switchService.getRoomForDecision(workspaceId, decisionId);
+  assert.equal(syncedRoom.shared_at_version, 2);
+  assert.equal(syncedRoom.shared_context.version, 2);
+});
+
+test('MESSAGES: Room messages persist in SQLite and truthfully record simulation flag', async () => {
+  const decisionId = `test_dec_msg_${Date.now()}`;
+  const workspaceId = 'ws_moonshot';
+
+  // 1. Initial message retrieval seeds simulation thread with honest flags
+  const initialMessages = switchService.getMessagesForDecision({
+    workspaceId,
+    decisionId,
+    roomId: 'sw_room_test_msg'
+  });
+  assert.ok(initialMessages.length >= 3);
+  assert.equal(initialMessages[0].is_simulated, true, 'Seeded messages must be flagged as simulated');
+
+  // 2. Post a message while unconfigured: must be persisted in SQLite with is_simulated: true
+  const postResult = await switchService.postMessageToRoom({
+    workspaceId,
+    decisionId,
+    roomId: 'sw_room_test_msg',
+    content: 'Evaluating checkout friction',
+    sender: 'Lead PM',
+    role: 'USER'
+  });
+
+  assert.equal(postResult.success, true);
+  assert.equal(postResult.isSimulated, true);
+  assert.equal(postResult.delivered, false);
+  assert.ok(postResult.reason.includes('SWITCH_AGENT_API_KEY is not configured'));
+
+  // 3. Confirm both user message and assistant reply are recorded in SQLite
+  const updatedMessages = switchService.getMessagesForDecision({
+    workspaceId,
+    decisionId,
+    roomId: 'sw_room_test_msg'
+  });
+  const userMsg = updatedMessages.find(m => m.content === 'Evaluating checkout friction');
+  assert.ok(userMsg);
+  assert.equal(userMsg.is_simulated, true);
+  assert.equal(userMsg.sender, 'Lead PM');
+});

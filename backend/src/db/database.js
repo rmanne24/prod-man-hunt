@@ -165,6 +165,21 @@ export class PMPilotDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_switch_proposals_decision ON switch_proposals(workspace_id, decision_id, decision_version);
 
+      -- Switch Collaboration Room Messages (Live & Simulated)
+      CREATE TABLE IF NOT EXISTS switch_messages (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        decision_id TEXT NOT NULL,
+        room_id TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        is_simulated INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_switch_messages_room ON switch_messages(workspace_id, decision_id);
+
       -- Ensure default demo workspace exists for synthetic demo decisions
       INSERT OR IGNORE INTO workspaces (id, name, created_by, created_at)
       VALUES ('ws_moonshot', 'Moonshot Commerce Workspace', 'system', '2026-01-01T00:00:00.000Z');
@@ -320,6 +335,16 @@ export class PMPilotDatabase {
     this.stmtMarkStaleSwitchProposals = this.db.prepare(`
       UPDATE switch_proposals SET status = 'STALE', updated_at = ?
       WHERE workspace_id = ? AND decision_id = ? AND decision_version < ? AND status = 'PENDING'
+    `);
+
+    // Switch Messages
+    this.stmtInsertSwitchMessage = this.db.prepare(`
+      INSERT INTO switch_messages (
+        id, workspace_id, decision_id, room_id, sender, role, content, is_simulated, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.stmtGetSwitchMessages = this.db.prepare(`
+      SELECT * FROM switch_messages WHERE workspace_id = ? AND decision_id = ? ORDER BY created_at ASC
     `);
   }
 
@@ -558,21 +583,20 @@ export class PMPilotDatabase {
 
   // --- Switch AI Collaboration Repository Methods ---
 
-  saveSwitchRoom({
-    id,
-    workspaceId,
-    decisionId,
-    roomId,
-    roomName,
-    roomUrl = null,
-    agentId = null,
-    connectionId = null,
-    status = 'ACTIVE',
-    sharedContext = null,
-    sharedAtVersion = 1
-  }) {
+  saveSwitchRoom(data = {}) {
+    const workspaceId = data.workspaceId || data.workspace_id;
+    const decisionId = data.decisionId || data.decision_id;
+    const roomId = data.roomId || data.room_id;
+    const roomName = data.roomName || data.room_name;
+    const roomUrl = data.roomUrl || data.room_url || null;
+    const agentId = data.agentId || data.agent_id || null;
+    const connectionId = data.connectionId || data.connection_id || null;
+    const status = data.status || 'ACTIVE';
+    const sharedContext = data.sharedContext || data.shared_context || null;
+    const sharedAtVersion = data.sharedAtVersion || data.shared_at_version || 1;
+
     const now = new Date().toISOString();
-    const entryId = id || `sw_room_${workspaceId}_${decisionId}`;
+    const entryId = data.id || `sw_room_${workspaceId}_${decisionId}`;
     this.stmtUpsertSwitchRoom.run(
       entryId,
       workspaceId,
@@ -676,6 +700,51 @@ export class PMPilotDatabase {
     const now = new Date().toISOString();
     this.stmtMarkStaleSwitchProposals.run(now, workspaceId, decisionId, currentVersion);
     return this.getSwitchProposals(workspaceId, decisionId);
+  }
+
+  saveSwitchMessage({
+    id,
+    workspaceId,
+    decisionId,
+    roomId,
+    sender,
+    role = 'USER',
+    content,
+    isSimulated = 1
+  }) {
+    const entryId = id || `sw_msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+    this.stmtInsertSwitchMessage.run(
+      entryId,
+      workspaceId,
+      decisionId,
+      roomId,
+      sender,
+      role,
+      content,
+      isSimulated ? 1 : 0,
+      now
+    );
+    return {
+      id: entryId,
+      workspace_id: workspaceId,
+      decision_id: decisionId,
+      room_id: roomId,
+      sender,
+      role,
+      content,
+      is_simulated: isSimulated ? 1 : 0,
+      created_at: now
+    };
+  }
+
+  getSwitchMessages(workspaceId, decisionId) {
+    if (!workspaceId || !decisionId) return [];
+    const rows = this.stmtGetSwitchMessages.all(workspaceId, decisionId) || [];
+    return rows.map(r => ({
+      ...r,
+      is_simulated: Boolean(r.is_simulated)
+    }));
   }
 
   close() {

@@ -15,7 +15,7 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function SwitchCollaborationView({ session, onRefreshSession, _onNavigateTo }) {
-  const { token, isAuthenticated } = useAuth();
+  const { token } = useAuth();
   const decisionId = session?.id || session?.sessionId || 'session_moonshot_checkout';
   const workspaceId = session?.workspaceId || 'ws_moonshot';
   const currentVersion = session?.version || 1;
@@ -72,37 +72,11 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
       if (res.ok) {
         const data = await res.json();
         setRoom(data.room);
-        if (data.room && messages.length === 0) {
-          // Initialize sample discussion thread if empty
-          setMessages([
-            {
-              id: 'm1',
-              sender: 'Switch Agent Fabric',
-              role: 'SYSTEM',
-              text: `Room initialized: ${data.room.room_name} bound to Decision v${data.room.shared_at_version || 1}. PMPilot Decision Assistant registered.`,
-              timestamp: 'Initial sync'
-            },
-            {
-              id: 'm2',
-              sender: 'Security Lead',
-              role: 'TEAMMATE',
-              text: 'Reviewed the guest checkout telemetry. We need to cap guest comparison to 3 items and add fraud friction for orders over $150.',
-              timestamp: '10m ago'
-            },
-            {
-              id: 'm3',
-              sender: 'PMPilot Decision Assistant',
-              role: 'AGENT',
-              text: 'Noted. Contradiction between frictionless conversion vs chargeback risk is active in Decision v1. Drafting proposal with revised fraud rules.',
-              timestamp: '5m ago'
-            }
-          ]);
-        }
       }
     } catch (err) {
       console.warn('Fetch room error:', err.message);
     }
-  }, [workspaceId, decisionId, getHeaders, messages.length]);
+  }, [workspaceId, decisionId, getHeaders]);
 
   // 3. Fetch proposals for current decision
   const fetchProposals = useCallback(async () => {
@@ -122,11 +96,53 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     }
   }, [workspaceId, decisionId, getHeaders]);
 
+  // 4. Fetch persistent messages from backend SQLite store
+  const fetchMessages = useCallback(async () => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/messages`, {
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.messages) {
+          setMessages(data.messages);
+        }
+      }
+    } catch (err) {
+      console.warn('Fetch messages error:', err.message);
+    }
+  }, [workspaceId, decisionId, getHeaders]);
+
   useEffect(() => {
     fetchPreflight();
     fetchRoom();
     fetchProposals();
-  }, [fetchPreflight, fetchRoom, fetchProposals]);
+    fetchMessages();
+  }, [fetchPreflight, fetchRoom, fetchProposals, fetchMessages]);
+
+  // Action: Force synchronize Room Briefing to current Decision Version
+  const handleSyncRoom = async () => {
+    setIsActionInProgress(true);
+    setActionAlert(null);
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room/sync`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRoom(data.room);
+        setActionAlert({
+          type: 'success',
+          text: `Room briefing context successfully synchronized to Decision v${data.room.shared_at_version}.`
+        });
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: `Sync room error: ${err.message}` });
+    } finally {
+      setIsActionInProgress(false);
+    }
+  };
 
   // Action: Create / Associate Room
   const handleCreateRoom = async () => {
@@ -147,6 +163,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
             : `Created and mapped Switch room: ${data.room.room_name}`
         });
         fetchRoom();
+        fetchMessages();
       } else {
         setActionAlert({
           type: 'error',
@@ -169,17 +186,6 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     setInputMessage('');
     setIsSendingMessage(true);
 
-    // Optimistically append to local message stream
-    const tempId = `m_${Date.now()}`;
-    const newMsg = {
-      id: tempId,
-      sender: isAuthenticated ? 'PM (You)' : 'PM [Demo]',
-      role: 'USER',
-      text: messageText,
-      timestamp: 'Just now'
-    };
-    setMessages(prev => [...prev, newMsg]);
-
     try {
       const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/message`, {
         method: 'POST',
@@ -190,19 +196,13 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
         })
       });
       const data = await res.json();
-      if (!res.ok || !data.success) {
-        // If unconfigured or delivery failed, note gracefully in chat
-        if (data.reason || data.error) {
-          setMessages(prev => [
-            ...prev,
-            {
-              id: `sys_${Date.now()}`,
-              sender: 'Switch Agent Bridge',
-              role: 'SYSTEM',
-              text: `Notice: Local delivery simulated. Remote Switch server status: ${preflight?.status || 'UNCONFIGURED'}. (${data.reason || data.error || 'Offline'})`,
-              timestamp: 'Just now'
-            }
-          ]);
+      if (res.ok && data.success) {
+        fetchMessages();
+        if (data.isSimulated && data.reason) {
+          setActionAlert({
+            type: 'info',
+            text: `Note: Message recorded in local evaluator thread. (${data.reason})`
+          });
         }
       }
     } catch (err) {
@@ -560,6 +560,23 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                 <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                   Synchronized at Decision Version <strong>v{room.shared_at_version || 1}</strong> · Agent: <code>{room.agent_id}</code>
                 </div>
+                {room.shared_at_version !== currentVersion && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '6px 10px',
+                    background: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    color: '#92400e',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+                    <span>Briefing is on v{room.shared_at_version}, canonical decision is on v{currentVersion}.</span>
+                  </div>
+                )}
               </div>
             ) : (
               <div>
@@ -570,7 +587,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
             <button
               onClick={handleCreateRoom}
               disabled={isActionInProgress}
@@ -589,8 +606,31 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
               }}
             >
               <Users size={14} />
-              <span>{room ? 'Refresh / Rebind Room' : 'Associate Switch Room (Idempotent)'}</span>
+              <span>{room ? 'Rebind Room' : 'Associate Switch Room (Idempotent)'}</span>
             </button>
+
+            {room && room.shared_at_version !== currentVersion && (
+              <button
+                onClick={handleSyncRoom}
+                disabled={isActionInProgress}
+                style={{
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  border: '1px solid #fde68a',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: isActionInProgress ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <RefreshCw size={13} />
+                <span>Sync Briefing to v{currentVersion}</span>
+              </button>
+            )}
 
             <button
               onClick={() => setShowSafeContextModal(true)}
@@ -679,6 +719,30 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
             </button>
           </div>
 
+          {/* Honest Live Stream vs Simulation Mode Banner */}
+          <div style={{
+            padding: '8px 14px',
+            background: preflight?.reachable ? '#ecfdf5' : '#fffbeb',
+            borderBottom: `1px solid ${preflight?.reachable ? '#a7f3d0' : '#fde68a'}`,
+            fontSize: '11px',
+            color: preflight?.reachable ? '#065f46' : '#92400e',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            {preflight?.reachable ? (
+              <>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#059669', flexShrink: 0 }} />
+                <span><strong>Live Switch Fabric:</strong> Connected to Switch server via Agent Protocol v1. Inbound events delivered via SSE/WS.</span>
+              </>
+            ) : (
+              <>
+                <AlertTriangle size={13} color="#b45309" style={{ flexShrink: 0 }} />
+                <span><strong>Evaluator Simulation Mode:</strong> Switch server (<code>http://localhost:8000</code>) is offline / unconfigured. Room thread below runs in local evaluator simulation mode.</span>
+              </>
+            )}
+          </div>
+
           {/* Messages Scroll Area */}
           <div style={{
             flex: 1,
@@ -692,6 +756,11 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
             {messages.map((m) => {
               const isAgent = m.role === 'AGENT';
               const isSystem = m.role === 'SYSTEM';
+              const isSimulated = m.is_simulated !== false;
+              const text = m.content || m.text || '';
+              const timeDisplay = m.created_at
+                ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : (m.timestamp || 'Just now');
 
               return (
                 <div
@@ -710,19 +779,31 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                     alignItems: 'center',
                     marginBottom: '4px'
                   }}>
-                    <span style={{
-                      fontWeight: 700,
-                      color: isAgent ? '#3730a3' : isSystem ? '#475569' : '#0f172a',
-                      fontSize: '12px'
-                    }}>
-                      {m.sender}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontWeight: 700,
+                        color: isAgent ? '#3730a3' : isSystem ? '#475569' : '#0f172a',
+                        fontSize: '12px'
+                      }}>
+                        {m.sender}
+                      </span>
+                      <span style={{
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        padding: '1px 5px',
+                        borderRadius: '3px',
+                        background: isSimulated ? '#fef3c7' : '#ecfdf5',
+                        color: isSimulated ? '#b45309' : '#047857'
+                      }}>
+                        {isSimulated ? 'SIMULATED DEMO' : 'LIVE SWITCH EVENT'}
+                      </span>
+                    </div>
                     <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                      {m.timestamp}
+                      {timeDisplay}
                     </span>
                   </div>
                   <div style={{ color: '#334155', lineHeight: 1.4 }}>
-                    {m.text}
+                    {text}
                   </div>
                 </div>
               );
@@ -1019,14 +1100,20 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                     {isAccepted && (
                       <div style={{
                         fontSize: '11px',
-                        color: '#15803d',
-                        fontWeight: 600,
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px'
                       }}>
-                        <CheckCircle2 size={13} />
-                        <span>Merged into Decision specification. Approval relocked.</span>
+                        <CheckCircle2 size={13} color={session?.approvalRecord?.status === 'APPROVED' ? '#15803d' : '#b45309'} />
+                        {session?.approvalRecord?.status === 'APPROVED' && session?.approvalRecord?.approvedDecisionVersion === currentVersion ? (
+                          <span style={{ color: '#15803d', fontWeight: 600 }}>
+                            Merged into v{prop.decision_version + 1} · Decision v{currentVersion} is Approved by Human PM
+                          </span>
+                        ) : (
+                          <span style={{ color: '#b45309', fontWeight: 600 }}>
+                            Merged into v{prop.decision_version + 1} · Awaiting Human PM Approval at v{currentVersion} (Linear Export Locked)
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

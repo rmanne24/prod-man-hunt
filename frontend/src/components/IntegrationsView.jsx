@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle2, Info, ExternalLink, Shield, Plug, Unplug, Check, AlertTriangle, Users, MessageSquare } from 'lucide-react';
+import { CheckCircle2, Info, ExternalLink, Shield, Plug, Unplug, Check, AlertTriangle, MessageSquare } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function IntegrationsView({ onNavigateTo }) {
