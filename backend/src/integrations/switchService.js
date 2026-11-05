@@ -800,8 +800,8 @@ class SwitchService {
       user?.name || 'Human PM'
     );
 
-    // 4. Mark proposal as ACCEPTED
-    db.updateSwitchProposalStatus(proposalId, 'ACCEPTED');
+    // 4. Mark proposal as ACCEPTED and record the merged decision version
+    db.updateSwitchProposalStatus(proposalId, 'ACCEPTED', mutatedDecision.version);
 
     // 5. Mark any other pending proposals for older version as STALE
     db.markStaleSwitchProposals(workspaceId, proposal.decision_id, mutatedDecision.version);
@@ -824,6 +824,7 @@ class SwitchService {
       proposalId,
       status: 'ACCEPTED',
       newDecisionVersion: mutatedDecision.version,
+      mergedDecisionVersion: mutatedDecision.version,
       approvalInvalidated: true,
       message: `Proposal merged successfully into Decision v${mutatedDecision.version}. Human approval relocked for review.`
     };

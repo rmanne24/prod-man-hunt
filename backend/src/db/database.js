@@ -150,6 +150,7 @@ export class PMPilotDatabase {
         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
         decision_id TEXT NOT NULL,
         decision_version INTEGER NOT NULL,
+        merged_decision_version INTEGER,
         room_id TEXT NOT NULL,
         proposal_type TEXT NOT NULL,
         summary TEXT NOT NULL,
@@ -184,6 +185,16 @@ export class PMPilotDatabase {
       INSERT OR IGNORE INTO workspaces (id, name, created_by, created_at)
       VALUES ('ws_moonshot', 'Moonshot Commerce Workspace', 'system', '2026-01-01T00:00:00.000Z');
     `);
+
+    // Safe schema migration for merged_decision_version
+    try {
+      this.db.exec('ALTER TABLE switch_proposals ADD COLUMN merged_decision_version INTEGER;');
+    } catch (_) {}
+
+    // Backfill historical ACCEPTED proposals where merged_decision_version was previously unpopulated
+    try {
+      this.db.exec("UPDATE switch_proposals SET merged_decision_version = decision_version + 1 WHERE status = 'ACCEPTED' AND merged_decision_version IS NULL;");
+    } catch (_) {}
   }
 
   prepareStatements() {
@@ -330,7 +341,11 @@ export class PMPilotDatabase {
       SELECT * FROM switch_proposals WHERE id = ?
     `);
     this.stmtUpdateSwitchProposalStatus = this.db.prepare(`
-      UPDATE switch_proposals SET status = ?, updated_at = ? WHERE id = ?
+      UPDATE switch_proposals SET
+        status = ?,
+        merged_decision_version = COALESCE(?, merged_decision_version),
+        updated_at = ?
+      WHERE id = ?
     `);
     this.stmtMarkStaleSwitchProposals = this.db.prepare(`
       UPDATE switch_proposals SET status = 'STALE', updated_at = ?
@@ -690,9 +705,9 @@ export class PMPilotDatabase {
     };
   }
 
-  updateSwitchProposalStatus(proposalId, status) {
+  updateSwitchProposalStatus(proposalId, status, mergedDecisionVersion = null) {
     const now = new Date().toISOString();
-    this.stmtUpdateSwitchProposalStatus.run(status, now, proposalId);
+    this.stmtUpdateSwitchProposalStatus.run(status, mergedDecisionVersion, now, proposalId);
     return this.getSwitchProposalById(proposalId);
   }
 

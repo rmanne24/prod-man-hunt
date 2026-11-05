@@ -21,7 +21,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { switchService } from '../src/integrations/switchService.js';
-import { PMPilotDatabase } from '../src/db/database.js';
+import { PMPilotDatabase, db } from '../src/db/database.js';
 import { RedisStateManager } from '../src/services/redisState.js';
 import { createDecisionRecord, DECISION_STATES } from '../src/domain/decisionModel.js';
 import { StateTransitionError } from '../src/domain/stateMachine.js';
@@ -238,7 +238,14 @@ test('LIFECYCLE & VERSION GUARD: Applying Switch proposal mutates decision, incr
   assert.equal(applyResult.success, true);
   assert.equal(applyResult.status, 'ACCEPTED');
   assert.equal(applyResult.newDecisionVersion, 2, 'Version must increment to 2');
+  assert.equal(applyResult.mergedDecisionVersion, 2, 'Merged decision version must be explicitly recorded');
   assert.equal(applyResult.approvalInvalidated, true);
+
+  // Check persisted proposal in SQLite
+  const persistedProp = db.getSwitchProposalById(proposal.id);
+  assert.equal(persistedProp.status, 'ACCEPTED');
+  assert.equal(persistedProp.decision_version, 1, 'Proposal source version remains 1');
+  assert.equal(persistedProp.merged_decision_version, 2, 'Proposal merged_decision_version in SQLite is 2');
 
   // Check mutated decision in state manager
   const updatedDecision = await RedisStateManager.getSession(decisionId);
@@ -379,4 +386,108 @@ test('MESSAGES: Room messages persist in SQLite and truthfully record simulation
   assert.ok(userMsg);
   assert.equal(userMsg.is_simulated, true);
   assert.equal(userMsg.sender, 'Lead PM');
+});
+
+test('PROPOSAL VERSION TRACKING: Explicitly distinguishes proposal source version, merged version, and active version', async () => {
+  const decisionId = `test_dec_ver_tracking_${Date.now()}`;
+  const workspaceId = 'ws_moonshot';
+
+  const record = createDecisionRecord({
+    id: decisionId,
+    title: 'Version Distinction Test Decision',
+    workspace: workspaceId
+  });
+  record.workspaceId = workspaceId;
+  record.status = DECISION_STATES.RECOMMENDATION_READY;
+  await RedisStateManager.saveDecision(record);
+
+  // 1. Initial State: Decision is at version 1
+  const initial = await RedisStateManager.getSession(decisionId);
+  assert.equal(initial.version, 1);
+
+  // 2. Draft Proposal A against version 1 (Source: v1)
+  const propA = await switchService.createStructuredProposal({
+    workspaceId,
+    decisionId,
+    roomId: 'sw_room_ver_test',
+    proposalType: 'REQUIREMENT_CHANGE',
+    summary: 'Proposal A authored against v1',
+    proposedChanges: { title: 'Version Distinction Test Decision (v2)' },
+    proposedBy: 'Data PM'
+  });
+  assert.equal(propA.decision_version, 1, 'Proposal A source version must be 1');
+  assert.equal(propA.status, 'PENDING');
+
+  // 3. Apply Proposal A: bumps canonical decision to version 2, invalidates approval, sets merged_decision_version = 2
+  const applyA = await switchService.applyProposalToDecision({
+    workspaceId,
+    proposalId: propA.id,
+    user: { name: 'Lead PM' }
+  });
+  assert.equal(applyA.success, true);
+  assert.equal(applyA.status, 'ACCEPTED');
+  assert.equal(applyA.newDecisionVersion, 2);
+  assert.equal(applyA.mergedDecisionVersion, 2);
+
+  const storedA = db.getSwitchProposalById(propA.id);
+  assert.equal(storedA.status, 'ACCEPTED');
+  assert.equal(storedA.decision_version, 1, 'Source version stays 1');
+  assert.equal(storedA.merged_decision_version, 2, 'Merged version is recorded as 2');
+
+  // 4. Human PM reviews and approves decision at version 2 -> Linear export unlocked
+  const approvedV2 = await RedisStateManager.submitApproval(decisionId, {
+    action: 'APPROVE',
+    decisionVersion: 2,
+    callerIdentity: { name: 'Lead PM' },
+    rationale: 'Approved v2 with Proposal A integrated'
+  });
+  assert.equal(approvedV2.version, 2);
+  assert.equal(approvedV2.approvalRecord?.status, 'APPROVED');
+  assert.equal(approvedV2.approvalRecord?.approvedDecisionVersion, 2);
+
+  // 5. Draft Proposal B against version 2 (Source: v2)
+  const propB = await switchService.createStructuredProposal({
+    workspaceId,
+    decisionId,
+    roomId: 'sw_room_ver_test',
+    proposalType: 'REQUIREMENT_CHANGE',
+    summary: 'Proposal B authored against v2',
+    proposedChanges: { title: 'Version Distinction Test Decision (v3)' },
+    proposedBy: 'Security Lead'
+  });
+  assert.equal(propB.decision_version, 2, 'Proposal B source version must be 2');
+
+  // 6. An external change (e.g. contradiction resolution or scope revision) advances decision to version 3
+  await RedisStateManager.reopenDecision(decisionId, 'External PM team revision');
+  const sessionV3 = await RedisStateManager.getSession(decisionId);
+  assert.equal(sessionV3.version, 3);
+  assert.equal(sessionV3.approvalRecord?.status, 'PENDING', 'Approval must be invalidated at v3');
+
+  // 7. Applying Proposal B now MUST be rejected as STALE
+  await assert.rejects(
+    async () => {
+      await switchService.applyProposalToDecision({
+        workspaceId,
+        proposalId: propB.id,
+        user: { name: 'Lead PM' }
+      });
+    },
+    (err) => {
+      assert.match(err.message, /Proposal is stale: created against decision version v2, but current active version is v3/);
+      return true;
+    }
+  );
+
+  // 8. Confirm Proposal B is marked STALE in SQLite
+  const storedB = db.getSwitchProposalById(propB.id);
+  assert.equal(storedB.status, 'STALE');
+  assert.equal(storedB.decision_version, 2, 'Source version stays 2');
+  assert.equal(storedB.merged_decision_version, null, 'Never merged');
+
+  // 9. Confirm Proposal A in the same workspace preserves its distinct source (1) and merged (2) versions
+  // even while active decision version is now 3 (Historical merge case)
+  const refreshedA = db.getSwitchProposalById(propA.id);
+  assert.equal(refreshedA.decision_version, 1);
+  assert.equal(refreshedA.merged_decision_version, 2);
+  assert.equal(sessionV3.version, 3);
 });

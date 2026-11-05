@@ -19,6 +19,10 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
   const decisionId = session?.id || session?.sessionId || 'session_moonshot_checkout';
   const workspaceId = session?.workspaceId || 'ws_moonshot';
   const currentVersion = session?.version || 1;
+  const isCurrentVersionApproved = Boolean(
+    session?.approvalRecord?.status === 'APPROVED' &&
+    Number(session?.approvalRecord?.approvedDecisionVersion) === Number(currentVersion)
+  );
 
   // Preflight state
   const [preflight, setPreflight] = useState(null);
@@ -504,17 +508,21 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
             <div>
               <span style={{ color: '#94a3b8' }}>Human Approval: </span>
               <strong style={{
-                color: session?.approvalRecord?.status === 'APPROVED' ? '#047857' : '#b45309'
+                color: isCurrentVersionApproved ? '#047857' : '#b45309'
               }}>
-                {session?.approvalRecord?.status || 'PENDING'}
+                {isCurrentVersionApproved
+                  ? `APPROVED (v${currentVersion})`
+                  : session?.approvalRecord?.status === 'APPROVED'
+                  ? `STALE (v${session?.approvalRecord?.approvedDecisionVersion})`
+                  : (session?.approvalRecord?.status || 'PENDING')}
               </strong>
             </div>
             <div>
               <span style={{ color: '#94a3b8' }}>Linear Export: </span>
               <strong style={{
-                color: session?.approvalRecord?.status === 'APPROVED' ? '#047857' : '#64748b'
+                color: isCurrentVersionApproved ? '#047857' : '#64748b'
               }}>
-                {session?.approvalRecord?.status === 'APPROVED' ? 'UNLOCKED' : 'LOCKED'}
+                {isCurrentVersionApproved ? 'UNLOCKED' : 'LOCKED'}
               </strong>
             </div>
           </div>
@@ -944,7 +952,9 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
               </div>
             ) : (
               proposals.map((prop) => {
-                const isStale = prop.status === 'STALE' || (prop.status === 'PENDING' && prop.decision_version !== currentVersion);
+                const sourceVersion = prop.decision_version;
+                const mergedVersion = prop.merged_decision_version || (prop.status === 'ACCEPTED' ? sourceVersion + 1 : null);
+                const isStale = prop.status === 'STALE' || (prop.status === 'PENDING' && sourceVersion !== currentVersion);
                 const isAccepted = prop.status === 'ACCEPTED';
                 const isRejected = prop.status === 'REJECTED';
                 const isPending = prop.status === 'PENDING' && !isStale;
@@ -960,9 +970,9 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                       boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                     }}
                   >
-                    {/* Status & Version Badges */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                    {/* Status & Explicit Version Badges */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <span style={{
                           fontSize: '10px',
                           fontWeight: 700,
@@ -971,7 +981,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                           background: isStale ? '#fef3c7' : isAccepted ? '#dcfce7' : isRejected ? '#fee2e2' : '#e0e7ff',
                           color: isStale ? '#b45309' : isAccepted ? '#15803d' : isRejected ? '#b91c1c' : '#3730a3'
                         }}>
-                          {isStale ? 'STALE VERSION' : prop.status}
+                          {isStale ? 'STALE' : isAccepted ? 'ACCEPTED' : isRejected ? 'REJECTED' : 'PENDING REVIEW'}
                         </span>
                         <span style={{
                           fontSize: '10px',
@@ -980,8 +990,32 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                           borderRadius: '4px',
                           background: '#f1f5f9',
                           color: '#475569'
-                        }}>
-                          BOUND TO v{prop.decision_version}
+                        }} title={`Proposal authored against Decision v${sourceVersion}`}>
+                          Source: v{sourceVersion}
+                        </span>
+                        {isAccepted && mergedVersion && (
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: '#dcfce7',
+                            color: '#166534',
+                            border: '1px solid #bbf7d0'
+                          }} title={`Merged into Decision specification v${mergedVersion}`}>
+                            Merged: v{mergedVersion}
+                          </span>
+                        )}
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: '#ffffff',
+                          color: '#64748b',
+                          border: '1px solid #e2e8f0'
+                        }} title={`Current canonical active decision is v${currentVersion}`}>
+                          Active: v{currentVersion}
                         </span>
                       </div>
 
@@ -1009,9 +1043,9 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                         alignItems: 'center',
                         gap: '6px'
                       }}>
-                        <AlertTriangle size={14} />
+                        <AlertTriangle size={14} style={{ flexShrink: 0 }} />
                         <span>
-                          <strong>Stale Proposal:</strong> Created against Decision v{prop.decision_version}, but current active decision is v{currentVersion}. Re-evaluation required.
+                          <strong>Stale Proposal:</strong> Created against Decision v{sourceVersion}, but current active decision is v{currentVersion}. Re-evaluation required.
                         </span>
                       </div>
                     )}
@@ -1092,26 +1126,46 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                           }}
                         >
                           <GitMerge size={12} />
-                          <span>Accept & Merge Proposal</span>
+                          <span>Accept & Merge (into v{currentVersion + 1})</span>
                         </button>
                       </div>
                     )}
 
                     {isAccepted && (
                       <div style={{
+                        marginTop: '8px',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
                         fontSize: '11px',
                         display: 'flex',
-                        alignItems: 'center',
+                        flexDirection: 'column',
                         gap: '4px'
                       }}>
-                        <CheckCircle2 size={13} color={session?.approvalRecord?.status === 'APPROVED' ? '#15803d' : '#b45309'} />
-                        {session?.approvalRecord?.status === 'APPROVED' && session?.approvalRecord?.approvedDecisionVersion === currentVersion ? (
-                          <span style={{ color: '#15803d', fontWeight: 600 }}>
-                            Merged into v{prop.decision_version + 1} · Decision v{currentVersion} is Approved by Human PM
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <CheckCircle2 size={13} color="#15803d" />
+                          <span style={{ fontWeight: 700, color: '#166534' }}>
+                            Accepted Proposal
+                          </span>
+                        </div>
+                        {mergedVersion === currentVersion ? (
+                          isCurrentVersionApproved ? (
+                            <span style={{ color: '#15803d', fontWeight: 600 }}>
+                              Merged into active Decision v{mergedVersion} · Human PM Approved at v{currentVersion} (Linear Export Unlocked)
+                            </span>
+                          ) : (
+                            <span style={{ color: '#b45309', fontWeight: 600 }}>
+                              Merged into active Decision v{mergedVersion} · Awaiting Human PM Approval at v{currentVersion} (Linear Export Locked)
+                            </span>
+                          )
+                        ) : mergedVersion < currentVersion ? (
+                          <span style={{ color: '#475569', fontWeight: 500 }}>
+                            Merged into Decision v{mergedVersion} (Historical) · Current active decision is v{currentVersion} ({isCurrentVersionApproved ? `Approved at v${currentVersion}` : 'Pending Review'})
                           </span>
                         ) : (
-                          <span style={{ color: '#b45309', fontWeight: 600 }}>
-                            Merged into v{prop.decision_version + 1} · Awaiting Human PM Approval at v{currentVersion} (Linear Export Locked)
+                          <span style={{ color: '#475569', fontWeight: 500 }}>
+                            Merged into Decision v{mergedVersion} (Prior Run) · Current active decision is v{currentVersion} ({isCurrentVersionApproved ? `Approved at v${currentVersion}` : 'Pending Review'})
                           </span>
                         )}
                       </div>
