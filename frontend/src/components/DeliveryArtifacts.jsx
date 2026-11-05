@@ -84,32 +84,32 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
   return (
     <div style={{
       background: '#ffffff',
-      borderRadius: '16px',
-      border: '1px solid #e5e8e1',
-      padding: '28px',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+      borderRadius: '12px',
+      border: '1px solid #e2e8f0',
+      padding: '24px 28px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
     }}>
       {/* Top Header */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        borderBottom: '1px solid #edf1eb',
+        borderBottom: '1px solid #f1f5f9',
         paddingBottom: '16px',
         marginBottom: '20px'
       }}>
         <div>
           <div style={{
             fontSize: '11px',
-            fontWeight: 800,
-            letterSpacing: '0.8px',
-            color: '#047857',
+            fontWeight: 700,
+            letterSpacing: '0.05em',
+            color: '#64748b',
             textTransform: 'uppercase',
             marginBottom: '4px'
           }}>
             DELIVERY SUITE · TRIGGER.DEV PIPELINE
           </div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#111915' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
             Product Requirements & Sprint Breakdown
           </h2>
         </div>
@@ -122,21 +122,20 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
             disabled={!isApproved}
             title={!isApproved ? "Locked: Awaiting human approval" : "Push tickets to Linear (Demo Mode)"}
             style={{
-              background: !isApproved ? '#e5e8e1' : exportLinearStatus === 'success' ? '#dcfce7' : exportLinearStatus === 'error' ? '#fee2e2' : '#12261e',
-              color: !isApproved ? '#718379' : exportLinearStatus === 'success' ? '#15803d' : exportLinearStatus === 'error' ? '#991b1b' : '#ffffff',
-              border: 'none',
-              borderRadius: '8px',
+              background: !isApproved ? '#f1f5f9' : exportLinearStatus === 'success' ? '#ecfdf5' : exportLinearStatus === 'error' ? '#fef2f2' : '#0f172a',
+              color: !isApproved ? '#94a3b8' : exportLinearStatus === 'success' ? '#047857' : exportLinearStatus === 'error' ? '#991b1b' : '#ffffff',
+              border: `1px solid ${!isApproved ? '#e2e8f0' : exportLinearStatus === 'success' ? '#a7f3d0' : exportLinearStatus === 'error' ? '#fecaca' : '#0f172a'}`,
+              borderRadius: '6px',
               padding: '8px 14px',
               fontSize: '12.5px',
               fontWeight: 600,
               cursor: !isApproved ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              opacity: !isApproved ? 0.75 : 1
+              gap: '6px'
             }}
           >
-            {!isApproved ? <Lock size={14} /> : exportLinearStatus === 'success' ? <CheckCircle size={14} /> : <ExternalLink size={14} />}
+            {!isApproved ? <Lock size={13} /> : exportLinearStatus === 'success' ? <CheckCircle size={13} /> : <ExternalLink size={13} />}
             <span>{exportLinearStatus === 'success' ? 'Validated for Linear (Demo)' : exportLinearStatus === 'error' ? 'Linear Export Failed' : 'Push to Linear (Demo)'}</span>
           </button>
 
@@ -146,21 +145,20 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
             disabled={!isApproved}
             title={!isApproved ? "Locked: Awaiting human approval" : "Share announcement to Slack (Demo Mode)"}
             style={{
-              background: !isApproved ? '#e5e8e1' : exportSlackStatus === 'success' ? '#dcfce7' : exportSlackStatus === 'error' ? '#fee2e2' : '#4a154b',
-              color: !isApproved ? '#718379' : exportSlackStatus === 'success' ? '#15803d' : exportSlackStatus === 'error' ? '#991b1b' : '#ffffff',
-              border: 'none',
-              borderRadius: '8px',
+              background: !isApproved ? '#f1f5f9' : exportSlackStatus === 'success' ? '#ecfdf5' : exportSlackStatus === 'error' ? '#fef2f2' : '#4a154b',
+              color: !isApproved ? '#94a3b8' : exportSlackStatus === 'success' ? '#047857' : exportSlackStatus === 'error' ? '#991b1b' : '#ffffff',
+              border: `1px solid ${!isApproved ? '#e2e8f0' : exportSlackStatus === 'success' ? '#a7f3d0' : exportSlackStatus === 'error' ? '#fecaca' : '#4a154b'}`,
+              borderRadius: '6px',
               padding: '8px 14px',
               fontSize: '12.5px',
               fontWeight: 600,
               cursor: !isApproved ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              opacity: !isApproved ? 0.75 : 1
+              gap: '6px'
             }}
           >
-            {!isApproved ? <Lock size={14} /> : exportSlackStatus === 'success' ? <CheckCircle size={14} /> : <Send size={14} />}
+            {!isApproved ? <Lock size={13} /> : exportSlackStatus === 'success' ? <CheckCircle size={13} /> : <Send size={13} />}
             <span>{exportSlackStatus === 'success' ? 'Notified #product (Demo)' : exportSlackStatus === 'error' ? 'Slack Failed' : 'Share to Slack (Demo)'}</span>
           </button>
         </div>
@@ -168,10 +166,10 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
 
       {/* Approval Status Banner */}
       <div style={{
-        background: isApproved ? '#f0fdf4' : isRevisionRequired ? '#fdf4ff' : '#fffbeb',
-        border: `1px solid ${isApproved ? '#bbf7d0' : isRevisionRequired ? '#f5d0fe' : '#fde68a'}`,
-        borderRadius: '10px',
-        padding: '14px 18px',
+        background: isApproved ? '#f0fdf4' : isRevisionRequired ? '#faf5ff' : '#fffbeb',
+        border: `1px solid ${isApproved ? '#bbf7d0' : isRevisionRequired ? '#e9d5ff' : '#fde68a'}`,
+        borderRadius: '8px',
+        padding: '12px 16px',
         marginBottom: '20px',
         display: 'flex',
         alignItems: 'center',
@@ -181,17 +179,17 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {isApproved ? (
-            <ShieldCheck size={20} color="#166534" />
+            <ShieldCheck size={18} color="#166534" />
           ) : isRevisionRequired ? (
-            <AlertTriangle size={20} color="#86198f" />
+            <AlertTriangle size={18} color="#7e22ce" />
           ) : (
-            <Lock size={20} color="#92400e" />
+            <Lock size={18} color="#92400e" />
           )}
           <div>
             <div style={{
               fontSize: '13px',
               fontWeight: 700,
-              color: isApproved ? '#166534' : isRevisionRequired ? '#86198f' : '#92400e'
+              color: isApproved ? '#166534' : isRevisionRequired ? '#7e22ce' : '#92400e'
             }}>
               {isApproved
                 ? `Delivery Unlocked · Approved for Version ${approvalRecord?.approvedDecisionVersion || version}`
@@ -201,7 +199,7 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
             </div>
             <div style={{
               fontSize: '12px',
-              color: isApproved ? '#15803d' : isRevisionRequired ? '#701a75' : '#78350f',
+              color: isApproved ? '#15803d' : isRevisionRequired ? '#6b21a8' : '#78350f',
               marginTop: '2px'
             }}>
               {isApproved ? (
@@ -222,11 +220,11 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
           <div style={{
             fontSize: '11px',
             fontWeight: 700,
-            background: isApproved ? '#dcfce7' : isRevisionRequired ? '#fae8ff' : '#fef3c7',
-            color: isApproved ? '#166534' : isRevisionRequired ? '#86198f' : '#92400e',
-            padding: '4px 10px',
-            borderRadius: '9999px',
-            letterSpacing: '0.4px',
+            background: isApproved ? '#dcfce7' : isRevisionRequired ? '#f3e8ff' : '#fef3c7',
+            color: isApproved ? '#166534' : isRevisionRequired ? '#7e22ce' : '#92400e',
+            padding: '3px 8px',
+            borderRadius: '4px',
+            letterSpacing: '0.04em',
             textTransform: 'uppercase'
           }}>
             {isApproved ? '✓ AUDIT RECORD VALID' : isRevisionRequired ? 'REVISION PENDING' : 'APPROVAL PENDING'}
@@ -239,7 +237,7 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
                 background: 'transparent',
                 color: '#166534',
                 border: '1px solid #86efac',
-                borderRadius: '8px',
+                borderRadius: '6px',
                 padding: '4px 10px',
                 fontSize: '11px',
                 fontWeight: 600,
@@ -253,16 +251,16 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
         <button
           onClick={() => setActiveTab('prd')}
           style={{
-            background: activeTab === 'prd' ? '#e3edd7' : 'transparent',
-            color: activeTab === 'prd' ? '#143825' : '#57675e',
+            background: activeTab === 'prd' ? '#f1f5f9' : 'transparent',
+            color: activeTab === 'prd' ? '#0f172a' : '#64748b',
             fontWeight: activeTab === 'prd' ? 700 : 500,
             border: 'none',
-            borderRadius: '9999px',
-            padding: '6px 14px',
+            borderRadius: '6px',
+            padding: '6px 12px',
             fontSize: '13px',
             cursor: 'pointer'
           }}
@@ -272,12 +270,12 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
         <button
           onClick={() => setActiveTab('stories')}
           style={{
-            background: activeTab === 'stories' ? '#e3edd7' : 'transparent',
-            color: activeTab === 'stories' ? '#143825' : '#57675e',
+            background: activeTab === 'stories' ? '#f1f5f9' : 'transparent',
+            color: activeTab === 'stories' ? '#0f172a' : '#64748b',
             fontWeight: activeTab === 'stories' ? 700 : 500,
             border: 'none',
-            borderRadius: '9999px',
-            padding: '6px 14px',
+            borderRadius: '6px',
+            padding: '6px 12px',
             fontSize: '13px',
             cursor: 'pointer'
           }}
@@ -287,12 +285,12 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
         <button
           onClick={() => setActiveTab('tickets')}
           style={{
-            background: activeTab === 'tickets' ? '#e3edd7' : 'transparent',
-            color: activeTab === 'tickets' ? '#143825' : '#57675e',
+            background: activeTab === 'tickets' ? '#f1f5f9' : 'transparent',
+            color: activeTab === 'tickets' ? '#0f172a' : '#64748b',
             fontWeight: activeTab === 'tickets' ? 700 : 500,
             border: 'none',
-            borderRadius: '9999px',
-            padding: '6px 14px',
+            borderRadius: '6px',
+            padding: '6px 12px',
             fontSize: '13px',
             cursor: 'pointer'
           }}
@@ -305,41 +303,41 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
       {activeTab === 'prd' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{
-            background: '#fafbf9',
+            background: '#f8fafc',
             padding: '16px 20px',
-            borderRadius: '10px',
-            border: '1px solid #e5e8e1',
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
             <div>
-              <div style={{ fontSize: '15px', fontWeight: 700, color: '#131916' }}>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
                 [SYNTHETIC DEMO] AI-Assisted Guest Checkout & Recovery
               </div>
-              <div style={{ fontSize: '12px', color: '#687a70', marginTop: '2px' }}>
-                Status: <strong>READY FOR SPRINT LOCK</strong> · Confidence: <strong>96%</strong> · [Synthetic Fixture]
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                Status: <strong style={{ color: '#047857' }}>READY FOR SPRINT LOCK</strong> · Confidence: <strong>96%</strong> · [Synthetic Fixture]
               </div>
             </div>
-            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '9999px', fontWeight: 700, border: '1px solid #fde68a' }}>
+            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid #fde68a' }}>
               SYNTHETIC DEMO SPEC
             </span>
           </div>
 
           <div>
-            <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#111915', marginBottom: '8px' }}>
+            <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
               1. Executive Summary & Problem Framing
             </h4>
-            <p style={{ fontSize: '13px', color: '#44564c', lineHeight: '1.5' }}>
+            <p style={{ fontSize: '13px', color: '#475569', lineHeight: 1.5, margin: 0 }}>
               Mandatory account creation creates a 68% drop-off barrier at the checkout step. By synthesizing Figma Frame 3A and Linear backlog ENG-142 with Exa competitor benchmarks from Stripe and Shopify, PMPilot provides a validated guest checkout experience with biometric 1-click payment and an in-cart comparison tray constrained strictly to 3 products to avoid mobile viewport degradation.
             </p>
           </div>
 
           <div>
-            <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#111915', marginBottom: '8px' }}>
+            <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
               2. Market Positioning & Differentiator (via Exa)
             </h4>
-            <p style={{ fontSize: '13px', color: '#44564c', lineHeight: '1.5' }}>
+            <p style={{ fontSize: '13px', color: '#475569', lineHeight: 1.5, margin: 0 }}>
               Stripe and Amazon have saturated standard guest checkout. The defensible differentiator identified by Exa is <em>predictive hesitation intervention</em>: offering automated bundling incentives within a 72-hour signed stateless cart token link.
             </p>
           </div>
@@ -348,7 +346,7 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
 
       {/* Tab 2: User Stories */}
       {activeTab === 'stories' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {[
             {
               id: 'STORY-01',
@@ -375,17 +373,17 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
             <div
               key={story.id}
               style={{
-                background: '#fafbf9',
-                border: '1px solid #e5e8e1',
-                borderRadius: '10px',
-                padding: '16px'
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '14px 16px'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#047857' }}>{story.id}</span>
-                <span style={{ fontSize: '11px', color: '#66786e' }}>{story.evidence}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#0f172a' }}>{story.id}</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{story.evidence}</span>
               </div>
-              <div style={{ fontSize: '13px', color: '#131916', lineHeight: '1.45' }}>
+              <div style={{ fontSize: '13px', color: '#1e293b', lineHeight: 1.45 }}>
                 <strong>As a</strong> {story.persona}, <strong>I want to</strong> {story.want}, <strong>so that</strong> {story.benefit}.
               </div>
             </div>
@@ -395,7 +393,7 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
 
       {/* Tab 3: Tickets */}
       {activeTab === 'tickets' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {[
             { id: 'ENG-201', title: 'Build guest-checkout entry and modal UI states', points: '5 pts', status: 'Ready for Dev' },
             { id: 'ENG-202', title: 'Implement 3-product comparison drawer component', points: '8 pts', status: 'Ready for Dev' },
@@ -409,18 +407,18 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '12px 16px',
-                background: '#fafbf9',
-                border: '1px solid #e5e8e1',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
                 borderRadius: '8px'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#4f46e5' }}>{t.id}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#111915' }}>{t.title}</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{t.id}</span>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>{t.title}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '11px', color: '#687a70' }}>{t.points}</span>
-                <span style={{ fontSize: '10.5px', background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '9999px', fontWeight: 600 }}>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{t.points}</span>
+                <span style={{ fontSize: '10.5px', background: '#f1f5f9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid #e2e8f0' }}>
                   {t.status}
                 </span>
               </div>

@@ -1,286 +1,305 @@
 import React from 'react';
 import {
+  LayoutDashboard,
+  FolderKanban,
+  FileCheck2,
   Layers,
-  FileCheck,
-  Compass,
-  Package,
-  Briefcase,
-  Smartphone,
-  Globe,
-  Key,
-  Pause,
-  Plus
+  Plug,
+  Settings,
+  PlusCircle,
+  Database,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function LeftSidebar({
-  activeNav = 'evidence',
+  activeNav = 'decisions',
   setActiveNav,
   sources = [],
+  decisionCount = 1,
   onCaptureSourceClick,
   onOpenSettings
 }) {
-  const navItems = [
-    { id: 'evidence', label: 'Evidence workspace', icon: Layers },
-    { id: 'atwork', label: 'At work ecosystem', icon: Briefcase, badge: 'Slack / Teams' },
-    { id: 'pocket', label: 'In your pocket', icon: Smartphone, badge: 'Mobile' },
-    { id: 'web', label: 'On the web', icon: Globe, badge: 'Agent' },
-    { id: 'decisions', label: 'Product decisions', icon: FileCheck },
-    { id: 'validation', label: 'Validation plans', icon: Compass },
-    { id: 'artifacts', label: 'Delivery artifacts', icon: Package }
+  const { user, isAuthenticated, isDemoMode, logout, exitDemoMode } = useAuth();
+  const initials = user?.name
+    ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+    : 'PM';
+  const mainNav = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'projects', label: 'Projects', icon: FolderKanban, badge: '1' },
+    { id: 'decisions', label: 'Decisions', icon: FileCheck2, badge: `${decisionCount} Active` },
+    { id: 'evidence', label: 'Evidence', icon: Layers, badge: `${sources.length}` },
+    { id: 'integrations', label: 'Integrations', icon: Plug },
+    { id: 'settings', label: 'Settings', icon: Settings }
   ];
 
   return (
     <aside style={{
-      width: '260px',
-      minWidth: '260px',
+      width: '240px',
+      minWidth: '240px',
       background: '#ffffff',
-      borderRight: '1px solid #e5e8e1',
-      padding: '24px 16px',
+      borderRight: '1px solid #e2e8f0',
       display: 'flex',
       flexDirection: 'column',
-      gap: '20px',
       height: '100%',
       overflowY: 'auto'
     }}>
-      {/* Brand Header */}
+      {/* Brand & Workspace Header */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        paddingLeft: '4px'
+        padding: '18px 16px 14px 16px',
+        borderBottom: '1px solid #f1f5f9'
       }}>
-        <div style={{
-          width: '26px',
-          height: '26px',
-          borderRadius: '7px',
-          background: '#0d251c',
-          color: '#34d399',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '15px',
-          fontWeight: 'bold'
-        }}>
-          ✦
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '12px' }}>
+          <div style={{
+            width: '26px',
+            height: '26px',
+            borderRadius: '6px',
+            background: '#0f172a',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '13px',
+            fontWeight: 800
+          }}>
+            P
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{
+              fontSize: '15px',
+              fontWeight: 800,
+              color: '#0f172a',
+              letterSpacing: '-0.3px',
+              lineHeight: 1.1
+            }}>
+              PMPilot
+            </span>
+            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+              Decision Intelligence
+            </span>
+          </div>
         </div>
-        <span style={{
-          fontSize: '17px',
-          fontWeight: 800,
-          color: '#111915',
-          letterSpacing: '-0.3px'
-        }}>
-          Associate PM
-        </span>
-      </div>
 
-      {/* Workspace Card */}
-      <div style={{
-        background: '#fafbf9',
-        border: '1px solid #e5e8e1',
-        borderRadius: '12px',
-        padding: '10px 12px'
-      }}>
+        {/* Workspace Switcher Card */}
         <div style={{
-          fontSize: '9.5px',
-          fontWeight: 800,
-          letterSpacing: '0.8px',
-          color: '#718378',
-          textTransform: 'uppercase',
-          marginBottom: '2px'
-        }}>
-          WORKSPACE
-        </div>
-        <div style={{
-          fontSize: '13px',
-          fontWeight: 700,
-          color: '#131916'
-        }}>
-          Moonshot Studio
-        </div>
-      </div>
-
-      {/* Nav Menu */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-        {navItems.map((item) => {
-          const isActive = activeNav === item.id;
-          const Icon = item.icon;
-
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveNav(item.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '9px 12px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: isActive ? 700 : 500,
-                color: isActive ? '#143825' : '#4f6156',
-                background: isActive ? '#e3edd7' : 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-                <Icon size={15} strokeWidth={isActive ? 2.3 : 1.8} />
-                <span>{item.label}</span>
-              </div>
-              {item.badge && (
-                <span style={{
-                  fontSize: '9px',
-                  fontWeight: 700,
-                  background: isActive ? '#cce0ba' : '#f0f4ec',
-                  color: '#2d4536',
-                  padding: '2px 5px',
-                  borderRadius: '4px'
-                }}>
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Captured Context Section */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px',
-        borderTop: '1px solid #f0f3ee',
-        paddingTop: '16px'
-      }}>
-        <div style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px',
+          padding: '8px 10px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0 4px'
+          alignItems: 'center'
         }}>
-          <span style={{
-            fontSize: '12.5px',
-            fontWeight: 700,
-            color: '#131916'
-          }}>
-            Captured context
-          </span>
-          <span style={{
-            fontSize: '10px',
-            fontWeight: 700,
-            background: '#e6f7ec',
-            color: '#047857',
-            padding: '2px 6px',
-            borderRadius: '9999px',
-            letterSpacing: '0.4px'
-          }}>
-            {sources.length} sources
+          <div>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              WORKSPACE
+            </div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+              Moonshot Studio
+            </div>
+          </div>
+          <span style={{ fontSize: '10px', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+            Demo
           </span>
         </div>
+      </div>
 
-        {/* Source List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {sources.map((src) => {
-            let badgeBg = '#f3effe';
-            let badgeColor = '#6d28d9';
-            if (src.badge === 'F') { badgeBg = '#fdf4ff'; badgeColor = '#c026d3'; }
-            if (src.badge === 'N') { badgeBg = '#eef2ff'; badgeColor = '#4338ca'; }
-            if (src.badge === 'L') { badgeBg = '#f5f3ff'; badgeColor = '#7c3aed'; }
-            if (src.badge === 'E') { badgeBg = '#f0fdfa'; badgeColor = '#0d9488'; }
+      {/* Main Navigation Menu */}
+      <div style={{ padding: '14px 10px', flex: 1 }}>
+        <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.6px', padding: '0 8px', marginBottom: '6px', textTransform: 'uppercase' }}>
+          Platform
+        </div>
+
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {mainNav.map((item) => {
+            const isActive = activeNav === item.id;
+            const Icon = item.icon;
 
             return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  if (item.id === 'settings') {
+                    if (onOpenSettings) onOpenSettings();
+                  } else {
+                    setActiveNav(item.id);
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? '#0f172a' : '#475569',
+                  background: isActive ? '#f1f5f9' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.12s ease'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <Icon size={16} color={isActive ? '#0f172a' : '#64748b'} />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    background: isActive ? '#e2e8f0' : '#f1f5f9',
+                    color: isActive ? '#0f172a' : '#64748b',
+                    padding: '1px 6px',
+                    borderRadius: '4px'
+                  }}>
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Quick Context Sources */}
+        <div style={{ marginTop: '20px' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '0 8px',
+            marginBottom: '6px'
+          }}>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+              Active Signals ({sources.length})
+            </span>
+            <button
+              onClick={onCaptureSourceClick}
+              title="Capture source signal"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#64748b',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px'
+              }}
+            >
+              <PlusCircle size={13} />
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {sources.slice(0, 4).map((src) => (
               <div
                 key={src.id}
+                onClick={() => setActiveNav('evidence')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  padding: '5px 6px',
+                  padding: '5px 8px',
                   borderRadius: '6px',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  color: '#334155',
+                  background: 'transparent'
                 }}
               >
-                <div style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '50%',
-                  background: badgeBg,
-                  color: badgeColor,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '11px',
-                  fontWeight: 800
-                }}>
-                  {src.badge}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: '#131916',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}>
-                    {src.name}
-                  </div>
-                  <div style={{ fontSize: '10px', color: '#718378' }}>
-                    {src.status}
-                  </div>
-                </div>
+                <Database size={12} color="#94a3b8" />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                  {src.name.replace(/^\[.*?\]\s*/, '')}
+                </span>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
-
-        {/* Buttons */}
-        <button
-          onClick={onCaptureSourceClick}
-          style={{
-            background: '#12261e',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '9999px',
-            padding: '8px 12px',
-            fontSize: '12px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px'
-          }}
-        >
-          <span>+ Capture evidence</span>
-        </button>
       </div>
 
-      {/* Settings / API Keys Footer Button */}
-      <div style={{ marginTop: 'auto', borderTop: '1px solid #f0f3ee', paddingTop: '14px' }}>
-        <button
-          onClick={onOpenSettings}
-          style={{
-            width: '100%',
-            background: '#f3f6f1',
-            color: '#143825',
-            border: '1px solid #d8dfd5',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            fontSize: '11.5px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px'
-          }}
-        >
-          <Key size={13} />
-          <span>API Keys & Credits</span>
-        </button>
+      {/* Footer: User Identity & Authentication Status */}
+      <div style={{
+        padding: '12px 14px',
+        borderTop: '1px solid #f1f5f9',
+        background: '#fafbfc'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
+            <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              background: isAuthenticated ? '#0f172a' : '#e2e8f0',
+              color: isAuthenticated ? '#ffffff' : '#334155',
+              fontSize: '11px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {isAuthenticated ? initials : 'DM'}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#0f172a',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {isAuthenticated ? user.name : 'Judge Demo Client'}
+              </div>
+              <div style={{
+                fontSize: '10px',
+                color: isAuthenticated ? '#059669' : '#94a3b8',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {isAuthenticated ? '✓ Authenticated PM' : 'UNVERIFIED_DEMO_CLIENT'}
+              </div>
+            </div>
+          </div>
+
+          {isAuthenticated ? (
+            <button
+              onClick={logout}
+              title="Sign out of PMPilot"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#64748b',
+                cursor: 'pointer',
+                padding: '4px',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <LogOut size={14} />
+            </button>
+          ) : isDemoMode ? (
+            <button
+              onClick={exitDemoMode}
+              title="Sign in with verified user account"
+              style={{
+                background: '#f1f5f9',
+                border: '1px solid #e2e8f0',
+                color: '#0f172a',
+                cursor: 'pointer',
+                padding: '3px 6px',
+                borderRadius: '4px',
+                fontSize: '10px',
+                fontWeight: 600
+              }}
+            >
+              Sign In
+            </button>
+          ) : null}
+        </div>
       </div>
     </aside>
   );

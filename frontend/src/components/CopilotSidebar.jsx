@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, RotateCcw, ShieldAlert, CheckCircle, Send, MessageSquare } from 'lucide-react';
+import { Sparkles, ArrowRight, RotateCcw, ShieldAlert, CheckCircle, Send, MessageSquare, X } from 'lucide-react';
 
 export default function CopilotSidebar({
   decisionMemory = [],
   onAction,
-  onReopenDecision
+  onReopenDecision,
+  onClose
 }) {
   const [messages, setMessages] = useState([
     {
@@ -76,139 +77,171 @@ export default function CopilotSidebar({
 
   return (
     <aside style={{
-      width: '320px',
-      minWidth: '300px',
+      width: '340px',
+      minWidth: '320px',
       background: '#ffffff',
-      borderLeft: '1px solid #e5e8e1',
-      padding: '24px 20px',
+      borderLeft: '1px solid #e2e8f0',
+      padding: '20px',
       display: 'flex',
       flexDirection: 'column',
-      gap: '24px',
+      gap: '20px',
       height: '100%',
-      overflowY: 'auto'
+      overflowY: 'auto',
+      zIndex: 40
     }}>
       {/* Header */}
-      <div>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '7px',
-          fontSize: '15px',
-          fontWeight: 700,
-          color: '#131916',
-          marginBottom: '6px'
-        }}>
-          <span style={{ color: '#047857', fontSize: '16px' }}>✦</span>
-          <span>Associate Product Manager</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '14px',
+            fontWeight: 700,
+            color: '#0f172a',
+            marginBottom: '4px'
+          }}>
+            <Sparkles size={15} color="#0f172a" />
+            <span>Associate PM Copilot</span>
+          </div>
+          <p style={{
+            fontSize: '12px',
+            color: '#64748b',
+            lineHeight: 1.4,
+            margin: 0
+          }}>
+            Context-grounded assistant for counter-arguments, scope reduction, and validation.
+          </p>
         </div>
-        <p style={{
-          fontSize: '12.5px',
-          color: '#55695e',
-          lineHeight: '1.4'
-        }}>
-          Decision-ready work, not a confident PRD. I expose what is observed, inferred, assumed, and unknown.
-        </p>
+
+        {onClose && (
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              padding: '4px',
+              borderRadius: '6px'
+            }}
+            title="Close Assistant"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* Quick Action Pills */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '8px'
-      }}>
-        <button
-          onClick={() => handleQuickAction('challenge_decision')}
-          disabled={isLoading}
-          style={{
-            background: '#fee2e2',
-            color: '#991b1b',
-            border: 'none',
-            borderRadius: '9999px',
-            padding: '6px 12px',
-            fontSize: '11.5px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'transform 0.15s'
-          }}
-        >
-          Challenge decision
-        </button>
+      <div>
+        <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+          Suggested PM Actions
+        </div>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px'
+        }}>
+          <button
+            onClick={() => handleQuickAction('challenge_decision')}
+            disabled={isLoading}
+            style={{
+              background: '#fff1f2',
+              color: '#9f1239',
+              border: '1px solid #fecdd3',
+              borderRadius: '6px',
+              padding: '7px 12px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left'
+            }}
+          >
+            ⚠️ Challenge decision with counter-evidence
+          </button>
 
-        <button
-          onClick={() => handleQuickAction('shrink_to_mvp')}
-          disabled={isLoading}
-          style={{
-            background: '#dcfce7',
-            color: '#166534',
-            border: 'none',
-            borderRadius: '9999px',
-            padding: '6px 12px',
-            fontSize: '11.5px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'transform 0.15s'
-          }}
-        >
-          Shrink to 2-week MVP
-        </button>
+          <button
+            onClick={() => handleQuickAction('shrink_to_mvp')}
+            disabled={isLoading}
+            style={{
+              background: '#f0fdf4',
+              color: '#166534',
+              border: '1px solid #bbf7d0',
+              borderRadius: '6px',
+              padding: '7px 12px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left'
+            }}
+          >
+            ✂️ Shrink scope to 2-week lean MVP
+          </button>
 
-        <button
-          onClick={() => handleQuickAction('create_validation_plan')}
-          disabled={isLoading}
-          style={{
-            background: '#ede9fe',
-            color: '#5b21b6',
-            border: 'none',
-            borderRadius: '9999px',
-            padding: '6px 12px',
-            fontSize: '11.5px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'transform 0.15s'
-          }}
-        >
-          Create validation plan
-        </button>
+          <button
+            onClick={() => handleQuickAction('create_validation_plan')}
+            disabled={isLoading}
+            style={{
+              background: '#f8fafc',
+              color: '#334155',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              padding: '7px 12px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'left'
+            }}
+          >
+            📋 Generate pre-sprint validation plan
+          </button>
+        </div>
       </div>
 
       {/* Decision Memory Section */}
-      <div>
+      <div style={{
+        background: '#f8fafc',
+        borderRadius: '8px',
+        border: '1px solid #e2e8f0',
+        padding: '14px'
+      }}>
         <div style={{
-          fontSize: '14px',
+          fontSize: '11px',
           fontWeight: 700,
-          color: '#131916',
-          marginBottom: '10px'
+          color: '#64748b',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          marginBottom: '8px'
         }}>
-          Decision memory
+          Decision Memory
         </div>
 
         <div style={{
-          borderLeft: '2px solid #84cc16',
-          paddingLeft: '12px',
+          borderLeft: '2px solid #0f172a',
+          paddingLeft: '10px',
           marginBottom: '10px'
         }}>
           <div style={{
             fontSize: '10px',
             fontWeight: 700,
-            letterSpacing: '0.8px',
-            color: '#65a30d',
-            textTransform: 'uppercase',
-            marginBottom: '4px'
+            color: '#64748b',
+            marginBottom: '2px'
           }}>
             {latestMemory.date}
           </div>
           <div style={{
-            fontSize: '13px',
+            fontSize: '12.5px',
             fontWeight: 700,
-            color: '#131916',
-            marginBottom: '4px'
+            color: '#0f172a',
+            marginBottom: '2px'
           }}>
             {latestMemory.title}
           </div>
           <p style={{
-            fontSize: '12px',
-            color: '#55695e',
-            lineHeight: '1.4'
+            fontSize: '11.5px',
+            color: '#475569',
+            lineHeight: 1.4,
+            margin: 0
           }}>
             {latestMemory.summary}
           </p>
@@ -220,50 +253,21 @@ export default function CopilotSidebar({
           }}
           style={{
             background: '#ffffff',
-            border: '1px solid #d4dbd4',
-            borderRadius: '8px',
-            padding: '6px 12px',
-            fontSize: '11.5px',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px',
+            padding: '5px 10px',
+            fontSize: '11px',
             fontWeight: 600,
-            color: '#34493e',
+            color: '#334155',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px'
+            gap: '5px'
           }}
         >
-          <RotateCcw size={13} />
-          <span>Reopen decision</span>
+          <RotateCcw size={12} />
+          <span>Reopen Decision</span>
         </button>
-      </div>
-
-      {/* Generation Status */}
-      <div style={{ borderTop: '1px solid #f0f3ee', paddingTop: '16px' }}>
-        <div style={{
-          fontSize: '13.5px',
-          fontWeight: 700,
-          color: '#131916',
-          marginBottom: '6px'
-        }}>
-          Generation status
-        </div>
-        <div style={{
-          fontSize: '10.5px',
-          fontWeight: 800,
-          letterSpacing: '0.8px',
-          color: '#047857',
-          textTransform: 'uppercase',
-          marginBottom: '4px'
-        }}>
-          READY · 4 APPROVED SOURCES
-        </div>
-        <div style={{
-          fontSize: '11.5px',
-          color: '#667a6f',
-          lineHeight: '1.4'
-        }}>
-          Artifacts stay linked to evidence and unresolved risks.
-        </div>
       </div>
 
       {/* Copilot Chat Feed */}
@@ -271,19 +275,19 @@ export default function CopilotSidebar({
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px',
-        borderTop: '1px solid #f0f3ee',
-        paddingTop: '16px',
-        minHeight: '200px'
+        gap: '8px',
+        borderTop: '1px solid #e2e8f0',
+        paddingTop: '14px',
+        minHeight: '180px'
       }}>
         <div style={{
-          fontSize: '12px',
+          fontSize: '11px',
           fontWeight: 700,
-          color: '#718076',
+          color: '#64748b',
           textTransform: 'uppercase',
-          letterSpacing: '0.5px'
+          letterSpacing: '0.04em'
         }}>
-          Copilot Stream
+          Conversation
         </div>
 
         <div style={{
@@ -292,20 +296,21 @@ export default function CopilotSidebar({
           display: 'flex',
           flexDirection: 'column',
           gap: '8px',
-          maxHeight: '260px'
+          maxHeight: '220px'
         }}>
           {messages.map(msg => (
             <div
               key={msg.id}
               style={{
                 fontSize: '12px',
-                lineHeight: '1.45',
-                padding: '10px 12px',
-                borderRadius: '8px',
-                background: msg.role === 'user' ? '#f1f5f9' : '#f0fdf4',
-                color: msg.role === 'user' ? '#0f172a' : '#14532d',
-                border: msg.role === 'user' ? '1px solid #e2e8f0' : '1px solid #bbf7d0',
-                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start'
+                lineHeight: 1.45,
+                padding: '8px 12px',
+                borderRadius: '6px',
+                background: msg.role === 'user' ? '#0f172a' : '#f1f5f9',
+                color: msg.role === 'user' ? '#ffffff' : '#0f172a',
+                border: msg.role === 'user' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                maxWidth: '90%'
               }}
             >
               {msg.text}
@@ -319,13 +324,13 @@ export default function CopilotSidebar({
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Ask Associate PM..."
+            placeholder="Ask Copilot..."
             style={{
               flex: 1,
-              background: '#f8faf9',
-              border: '1px solid #d4dbd4',
-              borderRadius: '8px',
-              padding: '8px 10px',
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              padding: '6px 10px',
               fontSize: '12px',
               outline: 'none'
             }}
@@ -333,18 +338,18 @@ export default function CopilotSidebar({
           <button
             type="submit"
             style={{
-              background: '#0e261d',
+              background: '#0f172a',
               color: '#ffffff',
               border: 'none',
-              borderRadius: '8px',
-              padding: '8px 12px',
+              borderRadius: '6px',
+              padding: '6px 10px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
-            <Send size={13} />
+            <Send size={12} />
           </button>
         </form>
       </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, AlertTriangle, HelpCircle } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function DecisionHealthHero({
   health,
@@ -12,7 +12,8 @@ export default function DecisionHealthHero({
     detail = "The guest-checkout decision is evidence-backed, but customer validation and scope clarity are still missing.",
     confidence = 88,
     conflictsCount = 2,
-    riskyAssumptionsCount = 1
+    riskyAssumptionsCount = 1,
+    epistemicBreakdown
   } = health || {};
 
   const isApproved = (decisionStatus === 'APPROVED' || decisionStatus === 'ARTIFACT_GENERATED') && approvalRecord?.status === 'APPROVED';
@@ -20,134 +21,152 @@ export default function DecisionHealthHero({
 
   return (
     <div style={{
-      background: '#0d251c',
-      backgroundImage: 'radial-gradient(ellipse at 85% 20%, rgba(52, 211, 153, 0.12) 0%, transparent 60%)',
-      borderRadius: '16px',
-      border: '1px solid #1a3c2e',
-      padding: '28px 32px',
+      background: '#ffffff',
+      borderRadius: '12px',
+      border: '1px solid #e2e8f0',
+      padding: '22px 26px',
+      marginBottom: '20px',
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: '20px',
-      color: '#f0fdf4',
-      boxShadow: '0 8px 30px rgba(7, 24, 18, 0.25)',
       flexWrap: 'wrap',
-      gap: '24px'
+      gap: '20px'
     }}>
-      {/* Left Column */}
-      <div style={{ maxWidth: '580px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+      {/* Left Column: Context & Summary */}
+      <div style={{ maxWidth: '640px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
           <div style={{
             fontSize: '11px',
-            fontWeight: 800,
-            letterSpacing: '1px',
-            color: '#34d399',
+            fontWeight: 700,
+            letterSpacing: '0.6px',
+            color: '#64748b',
             textTransform: 'uppercase'
           }}>
-            DECISION HEALTH
+            DECISION HEALTH & READINESS
           </div>
           <span style={{
-            fontSize: '10px',
-            fontWeight: 800,
-            padding: '2px 8px',
+            fontSize: '11px',
+            fontWeight: 700,
+            padding: '3px 9px',
             borderRadius: '9999px',
-            background: isApproved ? '#064e3b' : isRevision ? '#3b0764' : '#451a03',
-            color: isApproved ? '#6ee7b7' : isRevision ? '#e9d5ff' : '#fde68a',
-            border: `1px solid ${isApproved ? '#047857' : isRevision ? '#7e22ce' : '#b45309'}`
+            background: isApproved ? '#ecfdf5' : isRevision ? '#faf5ff' : '#fffbeb',
+            color: isApproved ? '#065f46' : isRevision ? '#6b21a8' : '#92400e',
+            border: `1px solid ${isApproved ? '#a7f3d0' : isRevision ? '#e9d5ff' : '#fde68a'}`,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px'
           }}>
-            {isApproved ? `✓ APPROVED (v${version})` : isRevision ? `⚠️ REVISION REQ (v${version})` : `🔒 AWAITING APPROVAL (v${version})`}
+            {isApproved ? <ShieldCheck size={12} /> : isRevision ? <AlertTriangle size={12} /> : <AlertCircle size={12} />}
+            <span>
+              {isApproved ? `✓ APPROVED (v${version})` : isRevision ? `⚠️ REVISION REQ (v${version})` : `🔒 AWAITING APPROVAL (v${version})`}
+            </span>
           </span>
         </div>
+
         <h2 style={{
-          fontSize: '22px',
+          fontSize: '19px',
           fontWeight: 700,
-          color: '#ffffff',
-          lineHeight: '1.25',
-          marginBottom: '8px'
+          color: '#0f172a',
+          lineHeight: '1.3',
+          marginBottom: '6px'
         }}>
           {status}
         </h2>
         <p style={{
-          fontSize: '13.5px',
-          color: '#a3c7b7',
-          lineHeight: '1.45'
+          fontSize: '13px',
+          color: '#475569',
+          lineHeight: '1.5'
         }}>
           {detail}
         </p>
+
+        {epistemicBreakdown && (
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              {epistemicBreakdown.observed} Observed
+            </span>
+            <span style={{ fontSize: '11px', background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              {epistemicBreakdown.inferred} Inferred
+            </span>
+            <span style={{ fontSize: '11px', background: '#f5f3ff', color: '#5b21b6', border: '1px solid #ddd6fe', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              {epistemicBreakdown.assumed} Assumed
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Right Column Metrics */}
+      {/* Right Column: Clean Metrics Grid */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '32px'
+        gap: '24px',
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        borderRadius: '10px',
+        padding: '14px 20px'
       }}>
         {/* Metric 1 */}
-        <div style={{ textAlign: 'left' }}>
+        <div style={{ textAlign: 'center', minWidth: '90px' }}>
           <div style={{
-            fontSize: '32px',
+            fontSize: '26px',
             fontWeight: 800,
-            color: '#6ee7b7',
-            letterSpacing: '-0.5px',
+            color: '#0f172a',
             lineHeight: '1'
           }}>
             {confidence}%
           </div>
           <div style={{
-            fontSize: '11.5px',
-            color: '#93b6a5',
-            marginTop: '4px',
+            fontSize: '11px',
+            color: '#64748b',
+            marginTop: '5px',
             fontWeight: 500
           }}>
-            Evidence confidence
+            Evidence score
           </div>
         </div>
 
-        {/* Divider */}
-        <div style={{ width: '1px', height: '40px', background: '#1d3e30' }} />
+        <div style={{ width: '1px', height: '36px', background: '#e2e8f0' }} />
 
         {/* Metric 2 */}
-        <div style={{ textAlign: 'left' }}>
+        <div style={{ textAlign: 'center', minWidth: '90px' }}>
           <div style={{
-            fontSize: '32px',
+            fontSize: '26px',
             fontWeight: 800,
-            color: conflictsCount > 0 ? '#fca5a5' : '#6ee7b7',
-            letterSpacing: '-0.5px',
+            color: conflictsCount > 0 ? '#dc2626' : '#059669',
             lineHeight: '1'
           }}>
             {conflictsCount}
           </div>
           <div style={{
-            fontSize: '11.5px',
-            color: '#93b6a5',
-            marginTop: '4px',
+            fontSize: '11px',
+            color: '#64748b',
+            marginTop: '5px',
             fontWeight: 500
           }}>
-            Conflicts
+            {conflictsCount === 1 ? 'Contradiction' : 'Contradictions'}
           </div>
         </div>
 
-        {/* Divider */}
-        <div style={{ width: '1px', height: '40px', background: '#1d3e30' }} />
+        <div style={{ width: '1px', height: '36px', background: '#e2e8f0' }} />
 
         {/* Metric 3 */}
-        <div style={{ textAlign: 'left' }}>
+        <div style={{ textAlign: 'center', minWidth: '90px' }}>
           <div style={{
-            fontSize: '32px',
+            fontSize: '26px',
             fontWeight: 800,
-            color: '#d8b4fe',
-            letterSpacing: '-0.5px',
+            color: '#6366f1',
             lineHeight: '1'
           }}>
             {riskyAssumptionsCount}
           </div>
           <div style={{
-            fontSize: '11.5px',
-            color: '#93b6a5',
-            marginTop: '4px',
+            fontSize: '11px',
+            color: '#64748b',
+            marginTop: '5px',
             fontWeight: 500
           }}>
-            Risky assumption
+            Assumptions
           </div>
         </div>
       </div>

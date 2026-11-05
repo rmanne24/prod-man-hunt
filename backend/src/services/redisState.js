@@ -1,7 +1,7 @@
 /**
  * PMPilot Decision State & Working Memory Manager
  * 
- * Implements in-memory persistence for canonical DecisionRecords.
+ * Implements persistent SQLite storage + fast in-memory caching for canonical DecisionRecords.
  * Provides a backward-compatible adapter ensuring existing UI components
  * (LeftSidebar, EvidenceWorkspace, EvidenceGraph, ContradictionGate) continue working.
  */
@@ -18,8 +18,11 @@ import {
   guardArtifactGeneration as smGuardArtifactGeneration,
   markArtifactsGenerated as smMarkArtifactsGenerated,
   reopenDecision as smReopenDecision,
-  applyMaterialMutation
+  applyMaterialMutation,
+  StateTransitionError
 } from '../domain/stateMachine.js';
+
+import { db } from '../db/database.js';
 
 class MemoryStore {
   constructor() {
@@ -93,6 +96,7 @@ export function adaptDecisionToSession(decision) {
   return {
     ...decision,
     sessionId: decision.id,
+    workspaceId: decision.workspaceId || 'ws_moonshot',
     capturedSources,
     // Ensure hero banner exists for UI
     hero: {
@@ -114,8 +118,15 @@ export function adaptDecisionToSession(decision) {
 
 // Initialize seed synthetic demo decision
 function initializeSeed() {
-  const seed = createSyntheticDemoDecision();
-  memoryStore.set(seed.id, seed);
+  const existing = db.getDecision('session_moonshot_checkout');
+  if (existing) {
+    memoryStore.set('session_moonshot_checkout', existing);
+  } else {
+    const seed = createSyntheticDemoDecision();
+    seed.workspaceId = 'ws_moonshot';
+    db.saveDecision(seed.id, 'ws_moonshot', seed.version, seed.status, seed);
+    memoryStore.set(seed.id, seed);
+  }
 }
 initializeSeed();
 
@@ -125,7 +136,10 @@ export const RedisStateManager = {
    */
   resetToSeed() {
     memoryStore.clear();
-    initializeSeed();
+    const seed = createSyntheticDemoDecision();
+    seed.workspaceId = 'ws_moonshot';
+    db.saveDecision(seed.id, 'ws_moonshot', seed.version, seed.status, seed);
+    memoryStore.set(seed.id, seed);
   },
 
   /**
@@ -134,9 +148,13 @@ export const RedisStateManager = {
   async getSession(decisionId = 'session_moonshot_checkout') {
     let decision = memoryStore.get(decisionId);
     if (!decision) {
-      // If requested default session is missing, reinitialize
-      if (decisionId === 'session_moonshot_checkout') {
+      decision = db.getDecision(decisionId);
+      if (decision) {
+        memoryStore.set(decisionId, decision);
+      } else if (decisionId === 'session_moonshot_checkout') {
         const seed = createSyntheticDemoDecision();
+        seed.workspaceId = 'ws_moonshot';
+        db.saveDecision(seed.id, 'ws_moonshot', seed.version, seed.status, seed);
         memoryStore.set(decisionId, seed);
         decision = seed;
       } else {
@@ -151,9 +169,16 @@ export const RedisStateManager = {
    */
   async getRawDecision(decisionId = 'session_moonshot_checkout') {
     let decision = memoryStore.get(decisionId);
-    if (!decision && decisionId === 'session_moonshot_checkout') {
-      decision = createSyntheticDemoDecision();
-      memoryStore.set(decisionId, decision);
+    if (!decision) {
+      decision = db.getDecision(decisionId);
+      if (decision) {
+        memoryStore.set(decisionId, decision);
+      } else if (decisionId === 'session_moonshot_checkout') {
+        decision = createSyntheticDemoDecision();
+        decision.workspaceId = 'ws_moonshot';
+        db.saveDecision(decision.id, 'ws_moonshot', decision.version, decision.status, decision);
+        memoryStore.set(decisionId, decision);
+      }
     }
     return decision;
   },
@@ -163,7 +188,7 @@ export const RedisStateManager = {
    */
   async saveDecision(decision, expectedPriorVersion = null) {
     if (expectedPriorVersion !== null && expectedPriorVersion !== undefined) {
-      const current = memoryStore.get(decision.id);
+      const current = memoryStore.get(decision.id) || db.getDecision(decision.id);
       if (current && current.version !== expectedPriorVersion) {
         throw new StateTransitionError(
           `Concurrency conflict: Decision was modified by another operation (current v${current.version}, expected v${expectedPriorVersion}).`,
@@ -172,7 +197,10 @@ export const RedisStateManager = {
       }
     }
     decision.updatedAt = new Date().toISOString();
+    if (!decision.workspaceId) decision.workspaceId = 'ws_moonshot';
+
     memoryStore.set(decision.id, decision);
+    db.saveDecision(decision.id, decision.workspaceId, decision.version, decision.status, decision);
     return adaptDecisionToSession(decision);
   },
 

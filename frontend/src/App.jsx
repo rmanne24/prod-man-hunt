@@ -3,14 +3,16 @@ import LeftSidebar from './components/LeftSidebar.jsx';
 import EvidenceWorkspace from './components/EvidenceWorkspace.jsx';
 import CopilotSidebar from './components/CopilotSidebar.jsx';
 import DeliveryArtifacts from './components/DeliveryArtifacts.jsx';
-import ValidationPlanView from './components/ValidationPlanView.jsx';
+import OverviewView from './components/OverviewView.jsx';
+import ProjectsView from './components/ProjectsView.jsx';
+import EvidenceView from './components/EvidenceView.jsx';
+import IntegrationsView from './components/IntegrationsView.jsx';
 import CaptureSourceModal from './components/CaptureSourceModal.jsx';
-import AtWorkHub from './components/AtWorkHub.jsx';
-import PocketCompanion from './components/PocketCompanion.jsx';
-import WebAutomationAgent from './components/WebAutomationAgent.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import OmniBar from './components/OmniBar.jsx';
-import { Loader2 } from 'lucide-react';
+import AuthScreen from './components/AuthScreen.jsx';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { Loader2, Sparkles, LogOut } from 'lucide-react';
 
 const fallbackSession = {
   id: "session_moonshot_checkout",
@@ -164,18 +166,33 @@ const fallbackSession = {
   ]
 };
 
-export default function App() {
-  const [activeNav, setActiveNav] = useState('evidence');
+function PMPilotWorkspace() {
+  const { user, token, isAuthenticated, isDemoMode, isLoading, logout, exitDemoMode } = useAuth();
+  const [activeNav, setActiveNav] = useState('decisions');
   const [session, setSession] = useState(null);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGeneratingJob, setIsGeneratingJob] = useState(false);
   const [jobProgress, setJobProgress] = useState(null);
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+
+  // Derive authorization headers based on real authenticated session vs judge demo mode
+  const getAuthHeaders = useCallback(() => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else if (isDemoMode) {
+      headers['X-PMPilot-Demo'] = 'true';
+    }
+    return headers;
+  }, [token, isDemoMode]);
 
   const fetchSession = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/session');
+      const res = await fetch('http://localhost:4000/api/session', {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.session) {
@@ -184,26 +201,56 @@ export default function App() {
         }
       }
     } catch (err) {
-      // Fallback
+      // Resilient fallback for local demo
     }
     setSession(fallbackSession);
-  }, []);
+  }, [getAuthHeaders]);
 
   useEffect(() => {
-    fetchSession();
-  }, [fetchSession]);
+    if (isAuthenticated || isDemoMode) {
+      fetchSession();
+    }
+  }, [fetchSession, isAuthenticated, isDemoMode]);
+
+  if (isLoading) {
+    return (
+      <div style={{
+        height: '100vh',
+        width: '100vw',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f8fafc'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <Loader2 className="animate-spin" size={32} color="#0f172a" style={{ margin: '0 auto 12px auto' }} />
+          <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
+            Verifying PMPilot session...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Enforce authentication gate: User must be signed in or explicitly in Judge Demo mode
+  if (!isAuthenticated && !isDemoMode) {
+    return <AuthScreen />;
+  }
+
+  const activeSession = session || fallbackSession;
 
   const handleResolveConflict = async (conflictId, choice) => {
     try {
       const res = await fetch('http://localhost:4000/api/session/session_moonshot_checkout/action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           action: 'resolve_conflict',
           payload: {
             conflictId,
             resolution: choice,
-            expectedVersion: activeSession.version
+            expectedVersion: activeSession.version,
+            decidedBy: user?.name || 'Human PM [Demo UI]'
           }
         })
       });
@@ -245,8 +292,11 @@ export default function App() {
     try {
       await fetch('http://localhost:4000/api/session/session_moonshot_checkout/action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reopen_decision' })
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          action: 'reopen_decision',
+          payload: { decidedBy: user?.name || 'Human PM [Demo UI]' }
+        })
       });
       await fetchSession();
     } catch (err) {
@@ -267,16 +317,18 @@ export default function App() {
     if (isSubmittingApproval) return;
     setIsSubmittingApproval(true);
     const sessionId = activeSession.id || activeSession.sessionId || 'session_moonshot_checkout';
+    const callerName = user?.name ? `${user.name} (${user.email})` : 'Human PM [Demo UI]';
+
     try {
       const res = await fetch(`http://localhost:4000/api/decisions/${sessionId}/approval`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           action,
           decisionVersion: Number(activeSession.version || 1),
           rationale: rationale || `Human PM action: ${action}`,
           conditions: conditions || [],
-          decidedBy: 'Human PM [Demo UI]'
+          decidedBy: callerName
         })
       });
 
@@ -289,7 +341,6 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error submitting approval action:', err);
-      // Fallback local update for offline demo resiliency
       if (action === 'APPROVE') {
         setSession(prev => ({
           ...prev,
@@ -297,7 +348,7 @@ export default function App() {
           approvalRecord: {
             status: 'APPROVED',
             approvedDecisionVersion: prev.version || 1,
-            decidedBy: 'Human PM [Demo UI]',
+            decidedBy: callerName,
             decidedAt: new Date().toISOString(),
             rationale,
             conditions
@@ -326,7 +377,7 @@ export default function App() {
     try {
       const res = await fetch('http://localhost:4000/api/jobs/prd', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           sessionId: activeSession.id || 'session_moonshot_checkout',
           targetDecisionVersion: activeSession.version
@@ -363,105 +414,245 @@ export default function App() {
     }
   };
 
-  const activeSession = session || fallbackSession;
-
   return (
     <div style={{
       display: 'flex',
       height: '100vh',
       width: '100vw',
       overflow: 'hidden',
-      background: '#f7f8f4'
+      background: '#f8fafc'
     }}>
-      {/* 1. Left Sidebar */}
+      {/* 1. Left Sidebar Navigation */}
       <LeftSidebar
         activeNav={activeNav}
         setActiveNav={setActiveNav}
         sources={activeSession.capturedSources || []}
+        decisionCount={1}
         onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* 2. Main Workspace Content */}
-      <main style={{
+      {/* 2. Main Workspace Layout */}
+      <div style={{
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        overflowY: 'auto'
+        overflow: 'hidden'
       }}>
-        {activeNav === 'evidence' && (
-          <EvidenceWorkspace
-            session={activeSession}
-            onResolveConflict={handleResolveConflict}
-            onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
-            onGenerateDecisionPack={handleGenerateDecisionPack}
-            onApprovalAction={handleApprovalAction}
-            onReopenDecision={handleReopenDecision}
-            isSubmittingApproval={isSubmittingApproval}
-          />
-        )}
-
-        {activeNav === 'atwork' && (
-          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
-            <AtWorkHub />
+        {/* Global Top App Bar */}
+        <header style={{
+          height: '52px',
+          minHeight: '52px',
+          background: '#ffffff',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 28px',
+          zIndex: 20
+        }}>
+          {/* Breadcrumbs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
+            <span style={{ fontWeight: 600, color: '#0f172a' }}>Moonshot Studio</span>
+            <span>/</span>
+            <span style={{ fontWeight: 500, color: '#334155' }}>AI CHECKOUT [SYNTHETIC DEMO]</span>
+            <span>/</span>
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              padding: '2px 8px',
+              borderRadius: '4px',
+              background: '#f1f5f9',
+              color: '#334155'
+            }}>
+              Decision Engine v{activeSession.version || 1}
+            </span>
           </div>
-        )}
 
-        {activeNav === 'pocket' && (
-          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
-            <PocketCompanion onResolveConflict={handleResolveConflict} />
+          {/* Right Header Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              onClick={() => setIsCopilotOpen(prev => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                background: isCopilotOpen ? '#0f172a' : '#ffffff',
+                color: isCopilotOpen ? '#ffffff' : '#334155',
+                border: '1px solid #cbd5e1',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <Sparkles size={13} color={isCopilotOpen ? '#ffffff' : '#0f172a'} />
+              <span>{isCopilotOpen ? 'Hide Copilot' : 'Associate PM'}</span>
+            </button>
+
+            {/* Account / Session Identity Pill */}
+            {isAuthenticated ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  background: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                  color: '#065f46',
+                  fontSize: '11.5px',
+                  fontWeight: 600
+                }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
+                  <span>{user.name}</span>
+                </div>
+                <button
+                  onClick={logout}
+                  title="Sign out of account"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '5px 10px',
+                    borderRadius: '6px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    color: '#475569',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <LogOut size={12} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  background: '#f8fafc',
+                  color: '#64748b',
+                  border: '1px solid #e2e8f0'
+                }}>
+                  UNVERIFIED_DEMO_CLIENT [Judge Demo]
+                </span>
+                <button
+                  onClick={exitDemoMode}
+                  title="Switch to authenticated user account"
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    background: '#0f172a',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Sign In
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        </header>
 
-        {activeNav === 'web' && (
-          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
-            <WebAutomationAgent />
-          </div>
-        )}
+        {/* Viewport & Copilot Drawer */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          height: 'calc(100% - 52px)',
+          overflow: 'hidden'
+        }}>
+          <main style={{
+            flex: 1,
+            height: '100%',
+            overflowY: 'auto'
+          }}>
+            {activeNav === 'overview' && (
+              <OverviewView
+                session={activeSession}
+                onNavigateToDecision={(dest) => setActiveNav(dest)}
+              />
+            )}
 
-        {activeNav === 'decisions' && (
-          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
-            <DeliveryArtifacts session={activeSession} />
-          </div>
-        )}
+            {activeNav === 'projects' && (
+              <ProjectsView
+                session={activeSession}
+                onNavigateToDecision={(dest) => setActiveNav(dest)}
+              />
+            )}
 
-        {activeNav === 'validation' && (
-          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
-            <ValidationPlanView />
-          </div>
-        )}
+            {activeNav === 'decisions' && (
+              <EvidenceWorkspace
+                session={activeSession}
+                onResolveConflict={handleResolveConflict}
+                onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
+                onGenerateDecisionPack={handleGenerateDecisionPack}
+                onApprovalAction={handleApprovalAction}
+                onReopenDecision={handleReopenDecision}
+                isSubmittingApproval={isSubmittingApproval}
+              />
+            )}
 
-        {activeNav === 'artifacts' && (
-          <div style={{ padding: '36px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
-            <DeliveryArtifacts session={activeSession} onReopenDecision={handleReopenDecision} />
-          </div>
-        )}
-      </main>
+            {activeNav === 'evidence' && (
+              <EvidenceView
+                session={activeSession}
+                onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
+                onNavigateToDecision={(dest) => setActiveNav(dest)}
+              />
+            )}
 
-      {/* 3. Right Copilot Sidebar */}
-      <CopilotSidebar
-        decisionMemory={activeSession.decisionMemory || []}
-        onAction={async (type) => {
-          if (type === 'shrink_to_mvp') {
-            await fetchSession();
-          }
-        }}
-        onReopenDecision={handleReopenDecision}
-      />
+            {activeNav === 'integrations' && (
+              <IntegrationsView />
+            )}
 
-      {/* 4. Floating OmniBar */}
+            {activeNav === 'artifacts' && (
+              <div style={{ padding: '32px 40px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
+                <DeliveryArtifacts
+                  session={activeSession}
+                  onReopenDecision={handleReopenDecision}
+                />
+              </div>
+            )}
+          </main>
+
+          {/* Toggleable Copilot Drawer */}
+          {isCopilotOpen && (
+            <CopilotSidebar
+              decisionMemory={activeSession.decisionMemory || []}
+              onAction={async (type) => {
+                if (type === 'shrink_to_mvp') {
+                  await fetchSession();
+                }
+              }}
+              onReopenDecision={handleReopenDecision}
+              onClose={() => setIsCopilotOpen(false)}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* 3. Floating OmniBar */}
       <OmniBar
         onPromptSubmit={(query) => {
           if (query.toLowerCase().includes("prd") || query.toLowerCase().includes("generate")) {
             handleGenerateDecisionPack();
           } else {
-            alert(`Associate PM processing: "${query}". Context pinned to active evidence.`);
+            alert(`Context prompt submitted: "${query}". Evaluation pinned to active decision.`);
           }
         }}
       />
 
-      {/* 5. Modals */}
+      {/* 4. Modals */}
       <CaptureSourceModal
         isOpen={isCaptureModalOpen}
         onClose={() => setIsCaptureModalOpen(false)}
@@ -483,7 +674,7 @@ export default function App() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0,0,0,0.6)',
+          background: 'rgba(15, 23, 42, 0.65)',
           zIndex: 999999,
           display: 'flex',
           alignItems: 'center',
@@ -492,43 +683,44 @@ export default function App() {
         }}>
           <div style={{
             background: '#ffffff',
-            borderRadius: '16px',
+            borderRadius: '12px',
             padding: '32px',
             width: '420px',
             textAlign: 'center',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
+            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+            border: '1px solid #e2e8f0'
           }}>
             <div style={{
-              width: '48px',
-              height: '48px',
+              width: '44px',
+              height: '44px',
               borderRadius: '50%',
-              background: '#e6f7ec',
+              background: '#ecfdf5',
               color: '#047857',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 16px auto'
             }}>
-              <Loader2 size={24} className="animate-spin" />
+              <Loader2 size={22} className="animate-spin" />
             </div>
-            <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#111915', marginBottom: '8px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
               Trigger.dev Async Pipeline
             </h3>
-            <p style={{ fontSize: '13px', color: '#55695e', marginBottom: '20px' }}>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
               {jobProgress?.step || "Processing multimodal PM context..."}
             </p>
 
             <div style={{
               width: '100%',
-              height: '8px',
-              background: '#e5e8e1',
+              height: '6px',
+              background: '#f1f5f9',
               borderRadius: '9999px',
               overflow: 'hidden'
             }}>
               <div style={{
                 width: `${jobProgress?.percent || 20}%`,
                 height: '100%',
-                background: '#047857',
+                background: '#0f172a',
                 transition: 'width 0.3s ease'
               }} />
             </div>
@@ -536,5 +728,13 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <PMPilotWorkspace />
+    </AuthProvider>
   );
 }

@@ -9,6 +9,10 @@
     "dev": "node --watch src/server.js",
     "test": "node --test test/decisionLifecycle.test.js",
     "test:http": "node --test test/serverEndpoints.test.js",
+    "test:auth": "node --test test/auth.test.js",
+    "test:persistence": "node --test test/persistence.test.js",
+    "test:oidc": "node --test test/oidc.test.js",
+    "test:linear": "node --test test/linearIntegration.test.js",
     "test:all": "node --test test/*.test.js"
   },
   "dependencies": {

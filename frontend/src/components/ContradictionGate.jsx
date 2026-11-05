@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
+import { AlertCircle, CheckCircle, Scale, ArrowRight } from 'lucide-react';
 
 export default function ContradictionGate({ conflicts = [], onResolveConflict }) {
   const [resolvingId, setResolvingId] = useState(null);
@@ -25,36 +25,40 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
   return (
     <div style={{
       background: '#ffffff',
-      borderRadius: '16px',
-      border: '1px solid #e5e8e1',
-      padding: '22px',
+      borderRadius: '10px',
+      border: '1px solid #e2e8f0',
+      padding: '20px',
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'space-between',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)'
     }}>
       {/* Header */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '14px'
+        marginBottom: '12px'
       }}>
-        <h3 style={{
-          fontSize: '16px',
-          fontWeight: 700,
-          color: '#131916'
-        }}>
-          Contradiction gate
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Scale size={16} color={isResolved ? '#059669' : '#dc2626'} />
+          <h3 style={{
+            fontSize: '15px',
+            fontWeight: 700,
+            color: '#0f172a'
+          }}>
+            Contradiction gate
+          </h3>
+        </div>
         <span style={{
-          fontSize: '10px',
-          fontWeight: 800,
-          letterSpacing: '0.6px',
+          fontSize: '11px',
+          fontWeight: 700,
+          letterSpacing: '0.4px',
           padding: '2px 8px',
           borderRadius: '4px',
-          background: isResolved ? '#dcfce7' : '#fee2e2',
-          color: isResolved ? '#166534' : '#b91c1c',
+          background: isResolved ? '#ecfdf5' : '#fef2f2',
+          color: isResolved ? '#065f46' : '#991b1b',
+          border: `1px solid ${isResolved ? '#a7f3d0' : '#fecaca'}`,
           textTransform: 'uppercase'
         }}>
           {isResolved ? 'RESOLVED' : activeConflict.severity || 'BLOCKING'}
@@ -64,17 +68,17 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
       {/* Body */}
       <div>
         <div style={{
-          fontSize: '14px',
+          fontSize: '13.5px',
           fontWeight: 700,
-          color: '#10261b',
+          color: '#1e293b',
           marginBottom: '6px'
         }}>
           {activeConflict.title}
         </div>
         <p style={{
           fontSize: '12.5px',
-          color: '#55695e',
-          lineHeight: '1.45',
+          color: '#475569',
+          lineHeight: '1.5',
           marginBottom: '16px'
         }}>
           {isResolved
@@ -93,17 +97,18 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
                 onClick={() => handleResolve(resOption.id)}
                 disabled={resolvingId !== null}
                 style={{
-                  background: resOption.recommended ? '#0e261d' : 'transparent',
-                  color: resOption.recommended ? '#ffffff' : '#34493e',
-                  border: resOption.recommended ? 'none' : '1px solid #d1dbd4',
-                  borderRadius: '8px',
-                  padding: '7px 12px',
-                  fontSize: '11.5px',
+                  background: resOption.recommended ? '#0f172a' : '#ffffff',
+                  color: resOption.recommended ? '#ffffff' : '#334155',
+                  border: resOption.recommended ? '1px solid #0f172a' : '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '7px 13px',
+                  fontSize: '12px',
                   fontWeight: 600,
                   cursor: resolvingId !== null ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px'
+                  gap: '6px',
+                  transition: 'all 0.12s ease'
                 }}
               >
                 <span>{resOption.recommended ? `★ ${resOption.label}` : resOption.label}</span>
@@ -115,12 +120,12 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
                 onClick={() => handleResolve("res_3")}
                 disabled={resolvingId !== null}
                 style={{
-                  background: '#0e261d',
+                  background: '#0f172a',
                   color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '7px 12px',
-                  fontSize: '11.5px',
+                  border: '1px solid #0f172a',
+                  borderRadius: '6px',
+                  padding: '7px 13px',
+                  fontSize: '12px',
                   fontWeight: 600,
                   cursor: resolvingId !== null ? 'not-allowed' : 'pointer',
                   display: 'flex',
@@ -134,12 +139,12 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
                 onClick={() => handleResolve("res_5")}
                 disabled={resolvingId !== null}
                 style={{
-                  background: 'transparent',
-                  color: '#34493e',
-                  border: '1px solid #d1dbd4',
-                  borderRadius: '8px',
-                  padding: '7px 12px',
-                  fontSize: '11.5px',
+                  background: '#ffffff',
+                  color: '#334155',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '7px 13px',
+                  fontSize: '12px',
                   fontWeight: 600,
                   cursor: resolvingId !== null ? 'not-allowed' : 'pointer'
                 }}
@@ -154,12 +159,16 @@ export default function ContradictionGate({ conflicts = [], onResolveConflict })
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
-          color: '#15803d',
+          color: '#059669',
           fontSize: '12px',
-          fontWeight: 600
+          fontWeight: 600,
+          background: '#ecfdf5',
+          border: '1px solid #a7f3d0',
+          padding: '8px 12px',
+          borderRadius: '6px'
         }}>
-          <CheckCircle size={15} />
-          <span>Contradiction cleared. Decision health increased to 96%.</span>
+          <CheckCircle size={15} color="#059669" />
+          <span>Contradiction cleared. Decision health unblocked for human PM approval.</span>
         </div>
       )}
     </div>

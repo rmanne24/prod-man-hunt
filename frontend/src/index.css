@@ -2,49 +2,69 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Canvas & Base */
-  --bg-canvas: #f7f8f4;
-  --bg-card: #ffffff;
-  --bg-card-subtle: #fafbf9;
-  --border-light: #e5e8e1;
-  --border-subtle: #ecefe9;
+  /* Cohesive SaaS Neutral Palette */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f1f5f9;
+  --bg-subtle: #f8fafc;
+  
+  --border-subtle: #f1f5f9;
+  --border-default: #e2e8f0;
+  --border-strong: #cbd5e1;
 
-  /* Forest Green Dark Themes (Hero Card) */
-  --forest-dark: #0b2118;
-  --forest-darker: #071711;
-  --forest-card: #0d271d;
-  --forest-border: #1a3c2e;
-  --forest-text-dim: #a3c7b7;
-  --forest-text-bright: #f0fdf4;
-  --mint-accent: #34d399;
-  --mint-bright: #6ee7b7;
+  /* Typography */
+  --text-main: #0f172a;
+  --text-body: #334155;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
 
-  /* Text System */
-  --text-primary: #121915;
-  --text-secondary: #586960;
-  --text-muted: #889990;
+  /* Primary Brand Action (Slate / Indigo) */
+  --brand-primary: #0f172a;
+  --brand-primary-hover: #1e293b;
+  --brand-accent: #2563eb;
+  --brand-accent-subtle: #eff6ff;
 
-  /* Brand and Accent */
-  --brand-active-bg: #e2edd6;
-  --brand-active-text: #193826;
-  --brand-btn-dark: #12241b;
+  /* Semantic Status Tokens */
+  --status-approved-bg: #ecfdf5;
+  --status-approved-border: #a7f3d0;
+  --status-approved-text: #065f46;
+  --status-approved-dot: #10b981;
 
-  /* Epistemic Colors */
-  --badge-observed-bg: #e6f7ec;
-  --badge-observed-text: #047857;
+  --status-blocked-bg: #fef2f2;
+  --status-blocked-border: #fecaca;
+  --status-blocked-text: #991b1b;
+  --status-blocked-dot: #ef4444;
+
+  --status-pending-bg: #fffbeb;
+  --status-pending-border: #fde68a;
+  --status-pending-text: #92400e;
+  --status-pending-dot: #f59e0b;
+
+  --status-revision-bg: #faf5ff;
+  --status-revision-border: #e9d5ff;
+  --status-revision-text: #6b21a8;
+  --status-revision-dot: #a855f7;
+
+  /* Epistemic Evidence Tokens */
+  --badge-observed-bg: #ecfdf5;
+  --badge-observed-text: #065f46;
   --badge-observed-dot: #10b981;
 
-  --badge-inferred-bg: #fdf3df;
-  --badge-inferred-text: #b45309;
+  --badge-inferred-bg: #fffbeb;
+  --badge-inferred-text: #92400e;
   --badge-inferred-dot: #f59e0b;
 
-  --badge-assumed-bg: #f3effe;
-  --badge-assumed-text: #6d28d9;
+  --badge-assumed-bg: #f5f3ff;
+  --badge-assumed-text: #5b21b6;
   --badge-assumed-dot: #8b5cf6;
 
-  --badge-validate-bg: #fde8eb;
-  --badge-validate-text: #be123c;
-  --badge-validate-dot: #f43f5e;
+  --badge-unknown-bg: #fff1f2;
+  --badge-unknown-text: #9f1239;
+  --badge-unknown-dot: #f43f5e;
+
+  /* Card Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
 }
 
 * {
@@ -54,12 +74,12 @@
 }
 
 body {
-  background-color: var(--bg-canvas);
-  color: var(--text-primary);
+  background-color: var(--bg-app);
+  color: var(--text-main);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.45;
+  line-height: 1.5;
   overflow-x: hidden;
 }
 
@@ -76,28 +96,64 @@ button, input, textarea, select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d4dbd2;
+  background: #cbd5e1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #b5c0b2;
+  background: #94a3b8;
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Common UI Helper Classes */
+.btn-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
 }
 
-@keyframes pulseGlow {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; filter: drop-shadow(0 0 8px rgba(110, 231, 183, 0.4)); }
+.btn-primary {
+  background-color: var(--brand-primary);
+  color: #ffffff;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--brand-primary-hover);
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.btn-secondary {
+  background-color: #ffffff;
+  color: var(--text-body);
+  border-color: var(--border-default);
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-strong);
 }
 
-.animate-pulse-glow {
-  animation: pulseGlow 2.5s infinite ease-in-out;
+.btn-success {
+  background-color: #059669;
+  color: #ffffff;
+}
+.btn-success:hover:not(:disabled) {
+  background-color: #047857;
+}
+
+.btn-danger-outline {
+  background-color: transparent;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.btn-danger-outline:hover:not(:disabled) {
+  background-color: #fef2f2;
+}
+
+.btn-disabled {
+  opacity: 0.6;
+  cursor: not-allowed !important;
 }

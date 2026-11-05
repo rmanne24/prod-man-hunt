@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Mic } from 'lucide-react';
+import { Search, CornerDownLeft } from 'lucide-react';
 
 export default function OmniBar({ onPromptSubmit }) {
   const [query, setQuery] = useState('');
@@ -14,75 +14,65 @@ export default function OmniBar({ onPromptSubmit }) {
   return (
     <div style={{
       position: 'fixed',
-      bottom: '18px',
+      bottom: '20px',
       left: '50%',
       transform: 'translateX(-50%)',
       zIndex: 9990,
-      width: '460px',
-      maxWidth: '90%'
+      width: '500px',
+      maxWidth: '92%'
     }}>
       <form
         onSubmit={handleSubmit}
         style={{
-          background: '#151d18',
-          border: '1px solid #233429',
+          background: '#0f172a',
+          border: '1px solid #334155',
           borderRadius: '9999px',
-          padding: '6px 10px 6px 16px',
+          padding: '8px 12px 8px 18px',
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.45)',
-          backdropFilter: 'blur(12px)'
+          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.25)',
+          backdropFilter: 'blur(10px)'
         }}
       >
-        <div style={{
-          width: '24px',
-          height: '24px',
-          borderRadius: '50%',
-          background: '#1e3327',
-          color: '#5eead4',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0
-        }}>
-          <Sparkles size={13} />
-        </div>
+        <Search size={15} color="#94a3b8" />
 
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Do anything..."
+          placeholder="Command PM context (e.g. 'generate PRD', 'challenge decision')..."
           style={{
             flex: 1,
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            color: '#f0fdf4',
-            fontSize: '13.5px',
+            color: '#f8fafc',
+            fontSize: '13px',
             fontFamily: 'inherit'
           }}
         />
 
         <button
-          type="button"
-          onClick={() => {
-            setQuery("Audit competitor checkout pricing on Stripe vs Shopify");
-          }}
-          title="Voice or preset query"
+          type="submit"
+          title="Submit command"
           style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#83988c',
+            background: '#1e293b',
+            border: '1px solid #475569',
+            borderRadius: '9999px',
+            color: '#cbd5e1',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '4px 6px'
+            padding: '4px 8px',
+            fontSize: '11px',
+            fontWeight: 600,
+            gap: '3px'
           }}
         >
-          <Mic size={15} />
+          <span>Return</span>
+          <CornerDownLeft size={11} />
         </button>
       </form>
     </div>
