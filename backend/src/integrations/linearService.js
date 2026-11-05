@@ -16,7 +16,13 @@ import { db } from '../db/database.js';
 import { encryptionService } from '../services/encryptionService.js';
 import { RedisStateManager } from '../services/redisState.js';
 
-const STATE_SECRET = process.env.LINEAR_CLIENT_SECRET || process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+let fallbackSecret = null;
+function getStateSecret() {
+  if (process.env.LINEAR_CLIENT_SECRET) return process.env.LINEAR_CLIENT_SECRET;
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (!fallbackSecret) fallbackSecret = crypto.randomBytes(32).toString('hex');
+  return fallbackSecret;
+}
 const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 class LinearService {
@@ -97,7 +103,7 @@ class LinearService {
     const payload = { workspaceId, userId, redirectUri: redirectUri || null, nonce, timestamp };
 
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    const sig = crypto.createHmac('sha256', STATE_SECRET).update(payloadB64).digest('base64url');
+    const sig = crypto.createHmac('sha256', getStateSecret()).update(payloadB64).digest('base64url');
     const state = `${payloadB64}.${sig}`;
 
     // RFC 7636 PKCE
@@ -137,7 +143,7 @@ class LinearService {
     }
 
     const [payloadB64, sig] = parts;
-    const expectedSig = crypto.createHmac('sha256', STATE_SECRET).update(payloadB64).digest('base64url');
+    const expectedSig = crypto.createHmac('sha256', getStateSecret()).update(payloadB64).digest('base64url');
 
     try {
       const match = crypto.timingSafeEqual(Buffer.from(sig, 'utf8'), Buffer.from(expectedSig, 'utf8'));

@@ -12,6 +12,8 @@ import { RedisStateManager } from "./services/redisState.js";
 import { ExaResearchEngine } from "./services/exa.js";
 import { MozillaTrustEngine } from "./services/mozillaTrust.js";
 import { TriggerJobRunner } from "./jobs/triggerJobs.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { AgentOrchestrator } from "./agents/orchestrator.js";
 import { CrossSurfaceHub } from "./services/crossSurfaceHub.js";
 import { StateTransitionError } from "./domain/stateMachine.js";
@@ -21,7 +23,8 @@ import { db } from "./db/database.js";
 import { authenticateToken, requireAuth, requireRealUser, requireWorkspaceMember } from "./auth/authMiddleware.js";
 import { linearService } from "./integrations/linearService.js";
 
-dotenv.config();
+const __serverDir = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__serverDir, "../.env") });
 
 const app = express();
 const PORT = process.env.PORT || 4000;
