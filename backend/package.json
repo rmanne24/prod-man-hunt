@@ -13,6 +13,7 @@
     "test:persistence": "node --test test/persistence.test.js",
     "test:oidc": "node --test test/oidc.test.js",
     "test:linear": "node --test test/linearIntegration.test.js",
+    "test:switch": "node --test test/switchIntegration.test.js",
     "test:all": "node --test test/*.test.js"
   },
   "dependencies": {

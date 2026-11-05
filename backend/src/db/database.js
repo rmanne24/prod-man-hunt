@@ -124,6 +124,47 @@ export class PMPilotDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_integration_connections_ws ON integration_connections(workspace_id);
 
+      -- Switch AI Rooms and Decision Mappings
+      CREATE TABLE IF NOT EXISTS switch_rooms (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        decision_id TEXT NOT NULL,
+        room_id TEXT NOT NULL,
+        room_name TEXT NOT NULL,
+        room_url TEXT,
+        agent_id TEXT,
+        connection_id TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        shared_context TEXT,
+        shared_at_version INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(workspace_id, decision_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_switch_rooms_decision ON switch_rooms(workspace_id, decision_id);
+
+      -- Switch Discussion Proposals (Grounded PM Proposals)
+      CREATE TABLE IF NOT EXISTS switch_proposals (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        decision_id TEXT NOT NULL,
+        decision_version INTEGER NOT NULL,
+        room_id TEXT NOT NULL,
+        proposal_type TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        open_questions TEXT,
+        proposed_changes TEXT,
+        risks_tradeoffs TEXT,
+        recommended_action TEXT,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        proposed_by TEXT NOT NULL DEFAULT 'pmpilot-decision-assistant',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_switch_proposals_decision ON switch_proposals(workspace_id, decision_id, decision_version);
+
       -- Ensure default demo workspace exists for synthetic demo decisions
       INSERT OR IGNORE INTO workspaces (id, name, created_by, created_at)
       VALUES ('ws_moonshot', 'Moonshot Commerce Workspace', 'system', '2026-01-01T00:00:00.000Z');
@@ -234,6 +275,52 @@ export class PMPilotDatabase {
     this.stmtListIntegrationConnections = this.db.prepare(
       'SELECT id, workspace_id, provider, connected_by_user_id, provider_organization_id, provider_organization_name, scopes, status, expires_at, last_synced_at, created_at, updated_at FROM integration_connections WHERE workspace_id = ?'
     );
+
+    // Switch Rooms
+    this.stmtGetSwitchRoom = this.db.prepare(`
+      SELECT * FROM switch_rooms WHERE workspace_id = ? AND decision_id = ?
+    `);
+    this.stmtUpsertSwitchRoom = this.db.prepare(`
+      INSERT INTO switch_rooms (
+        id, workspace_id, decision_id, room_id, room_name, room_url, agent_id,
+        connection_id, status, shared_context, shared_at_version, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, decision_id) DO UPDATE SET
+        room_id = excluded.room_id,
+        room_name = excluded.room_name,
+        room_url = excluded.room_url,
+        agent_id = excluded.agent_id,
+        connection_id = excluded.connection_id,
+        status = excluded.status,
+        shared_context = excluded.shared_context,
+        shared_at_version = excluded.shared_at_version,
+        updated_at = excluded.updated_at
+    `);
+    this.stmtDeleteSwitchRoom = this.db.prepare(`
+      DELETE FROM switch_rooms WHERE workspace_id = ? AND decision_id = ?
+    `);
+
+    // Switch Proposals
+    this.stmtInsertSwitchProposal = this.db.prepare(`
+      INSERT INTO switch_proposals (
+        id, workspace_id, decision_id, decision_version, room_id, proposal_type,
+        summary, open_questions, proposed_changes, risks_tradeoffs, recommended_action,
+        status, proposed_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.stmtGetSwitchProposals = this.db.prepare(`
+      SELECT * FROM switch_proposals WHERE workspace_id = ? AND decision_id = ? ORDER BY created_at DESC
+    `);
+    this.stmtGetSwitchProposalById = this.db.prepare(`
+      SELECT * FROM switch_proposals WHERE id = ?
+    `);
+    this.stmtUpdateSwitchProposalStatus = this.db.prepare(`
+      UPDATE switch_proposals SET status = ?, updated_at = ? WHERE id = ?
+    `);
+    this.stmtMarkStaleSwitchProposals = this.db.prepare(`
+      UPDATE switch_proposals SET status = 'STALE', updated_at = ?
+      WHERE workspace_id = ? AND decision_id = ? AND decision_version < ? AND status = 'PENDING'
+    `);
   }
 
   // --- User Repository Methods ---
@@ -467,6 +554,128 @@ export class PMPilotDatabase {
   listIntegrationConnections(workspaceId) {
     if (!workspaceId) return [];
     return this.stmtListIntegrationConnections.all(workspaceId) || [];
+  }
+
+  // --- Switch AI Collaboration Repository Methods ---
+
+  saveSwitchRoom({
+    id,
+    workspaceId,
+    decisionId,
+    roomId,
+    roomName,
+    roomUrl = null,
+    agentId = null,
+    connectionId = null,
+    status = 'ACTIVE',
+    sharedContext = null,
+    sharedAtVersion = 1
+  }) {
+    const now = new Date().toISOString();
+    const entryId = id || `sw_room_${workspaceId}_${decisionId}`;
+    this.stmtUpsertSwitchRoom.run(
+      entryId,
+      workspaceId,
+      decisionId,
+      roomId,
+      roomName,
+      roomUrl,
+      agentId,
+      connectionId,
+      status,
+      typeof sharedContext === 'object' ? JSON.stringify(sharedContext) : sharedContext,
+      sharedAtVersion,
+      now,
+      now
+    );
+    return this.getSwitchRoom(workspaceId, decisionId);
+  }
+
+  getSwitchRoom(workspaceId, decisionId) {
+    if (!workspaceId || !decisionId) return null;
+    const row = this.stmtGetSwitchRoom.get(workspaceId, decisionId);
+    if (!row) return null;
+    return {
+      ...row,
+      shared_context: row.shared_context ? JSON.parse(row.shared_context) : null
+    };
+  }
+
+  deleteSwitchRoom(workspaceId, decisionId) {
+    if (!workspaceId || !decisionId) return;
+    this.stmtDeleteSwitchRoom.run(workspaceId, decisionId);
+  }
+
+  saveSwitchProposal({
+    id,
+    workspaceId,
+    decisionId,
+    decisionVersion,
+    roomId,
+    proposalType = 'REQUIREMENT_CHANGE',
+    summary,
+    openQuestions = [],
+    proposedChanges = {},
+    risksTradeoffs = [],
+    recommendedAction = '',
+    status = 'PENDING',
+    proposedBy = 'pmpilot-decision-assistant'
+  }) {
+    const now = new Date().toISOString();
+    const propId = id || `prop_sw_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    this.stmtInsertSwitchProposal.run(
+      propId,
+      workspaceId,
+      decisionId,
+      decisionVersion,
+      roomId,
+      proposalType,
+      summary,
+      Array.isArray(openQuestions) ? JSON.stringify(openQuestions) : JSON.stringify([]),
+      typeof proposedChanges === 'object' ? JSON.stringify(proposedChanges) : '{}',
+      Array.isArray(risksTradeoffs) ? JSON.stringify(risksTradeoffs) : JSON.stringify([]),
+      recommendedAction,
+      status,
+      proposedBy,
+      now,
+      now
+    );
+    return this.getSwitchProposalById(propId);
+  }
+
+  getSwitchProposals(workspaceId, decisionId) {
+    if (!workspaceId || !decisionId) return [];
+    const rows = this.stmtGetSwitchProposals.all(workspaceId, decisionId) || [];
+    return rows.map(r => ({
+      ...r,
+      open_questions: r.open_questions ? JSON.parse(r.open_questions) : [],
+      proposed_changes: r.proposed_changes ? JSON.parse(r.proposed_changes) : {},
+      risks_tradeoffs: r.risks_tradeoffs ? JSON.parse(r.risks_tradeoffs) : []
+    }));
+  }
+
+  getSwitchProposalById(proposalId) {
+    if (!proposalId) return null;
+    const r = this.stmtGetSwitchProposalById.get(proposalId);
+    if (!r) return null;
+    return {
+      ...r,
+      open_questions: r.open_questions ? JSON.parse(r.open_questions) : [],
+      proposed_changes: r.proposed_changes ? JSON.parse(r.proposed_changes) : {},
+      risks_tradeoffs: r.risks_tradeoffs ? JSON.parse(r.risks_tradeoffs) : []
+    };
+  }
+
+  updateSwitchProposalStatus(proposalId, status) {
+    const now = new Date().toISOString();
+    this.stmtUpdateSwitchProposalStatus.run(status, now, proposalId);
+    return this.getSwitchProposalById(proposalId);
+  }
+
+  markStaleSwitchProposals(workspaceId, decisionId, currentVersion) {
+    const now = new Date().toISOString();
+    this.stmtMarkStaleSwitchProposals.run(now, workspaceId, decisionId, currentVersion);
+    return this.getSwitchProposals(workspaceId, decisionId);
   }
 
   close() {

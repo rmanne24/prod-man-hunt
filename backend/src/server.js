@@ -22,6 +22,7 @@ import { oidcService } from "./auth/oidcService.js";
 import { db } from "./db/database.js";
 import { authenticateToken, requireAuth, requireRealUser, requireWorkspaceMember } from "./auth/authMiddleware.js";
 import { linearService } from "./integrations/linearService.js";
+import { switchService } from "./integrations/switchService.js";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__serverDir, "../.env") });
@@ -487,6 +488,139 @@ app.post("/api/workspaces/:workspaceId/integrations/linear/disconnect", requireW
   }
 });
 
+/* ------------------- SWITCH AI COLLABORATION ROUTES ------------------- */
+
+// Safe Switch preflight report (health check probe to GET /health, status, config presence, zero secrets)
+app.get("/api/integrations/switch/preflight", async (req, res) => {
+  try {
+    const preflight = await switchService.getPreflightReport();
+    res.json({ success: true, preflight });
+  } catch (err) {
+    res.status(500).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
+// Register or update PMPilot Decision Assistant with Switch
+app.post("/api/integrations/switch/register", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { overwrite } = req.body || {};
+    const result = await switchService.registerAgent({ overwrite: Boolean(overwrite) });
+    res.json({ success: true, registration: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
+// Get Switch Room mapped to decision
+app.get("/api/workspaces/:workspaceId/decisions/:decisionId/switch/room", requireWorkspaceMember, (req, res) => {
+  try {
+    const room = db.getSwitchRoom(req.params.workspaceId, req.params.decisionId);
+    res.json({ success: true, room: room || null });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Create or associate Switch Room for a decision (Idempotent)
+app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/room", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { workspaceId, decisionId } = req.params;
+    const room = await switchService.getOrCreateRoomForDecision({
+      workspaceId,
+      decisionId,
+      userId: req.user?.id
+    });
+    res.status(room.isExisting ? 200 : 201).json({ success: true, room });
+  } catch (err) {
+    res.status(400).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
+// Post a message / briefing update to the Switch room
+app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/message", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { roomId, content } = req.body;
+    if (!roomId || !content) {
+      return res.status(400).json({ success: false, error: "Both 'roomId' and 'content' are required." });
+    }
+    const result = await switchService.postMessageToRoom({ roomId, content });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
+// List structured proposals for a decision
+app.get("/api/workspaces/:workspaceId/decisions/:decisionId/switch/proposals", requireWorkspaceMember, (req, res) => {
+  try {
+    const proposals = switchService.getProposalsForDecision(req.params.workspaceId, req.params.decisionId);
+    res.json({ success: true, proposals });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit a structured proposal from Switch collaboration into PMPilot
+app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/proposals", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { workspaceId, decisionId } = req.params;
+    const {
+      roomId,
+      proposalType,
+      summary,
+      openQuestions,
+      proposedChanges,
+      risksTradeoffs,
+      recommendedAction,
+      proposedBy
+    } = req.body;
+
+    const proposal = await switchService.createStructuredProposal({
+      workspaceId,
+      decisionId,
+      roomId,
+      proposalType,
+      summary,
+      openQuestions,
+      proposedChanges,
+      risksTradeoffs,
+      recommendedAction,
+      proposedBy: proposedBy || (req.user?.name ? `${req.user.name} (via Switch)` : 'pmpilot-decision-assistant')
+    });
+
+    res.status(201).json({ success: true, proposal });
+  } catch (err) {
+    res.status(400).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
+// Human PM merges / applies a Switch proposal to the decision
+// Strict Human Approval Guard: advances decision version, resets approval, marks stale older proposals
+app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/proposals/:proposalId/apply", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { workspaceId, proposalId } = req.params;
+    const result = await switchService.applyProposalToDecision({
+      workspaceId,
+      proposalId,
+      user: req.user
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
+// Reject a Switch proposal
+app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/proposals/:proposalId/reject", requireWorkspaceMember, (req, res) => {
+  try {
+    const { proposalId } = req.params;
+    const result = switchService.rejectProposal(proposalId);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
 /* ------------------- DELIVERY EXPORT ROUTES (GUARDED) ------------------- */
 
 // Guarded Linear sprint backlog export
@@ -614,7 +748,7 @@ app.post("/api/hub/settings/keys", (req, res) => {
   res.json(result);
 });
 
-export function runStartupPreflight() {
+export async function runStartupPreflight() {
   const preflight = linearService.getPreflightReport();
   console.log(`[Linear OAuth Preflight] Status: ${preflight.status}`);
   for (const [name, check] of Object.entries(preflight.variables)) {
@@ -625,6 +759,17 @@ export function runStartupPreflight() {
         : `INVALID (${check.error || 'malformed'})`;
     console.log(`  - ${name}: ${statusText}`);
   }
+
+  try {
+    const switchPreflight = await switchService.getPreflightReport();
+    console.log(`[Switch AI Preflight] Status: ${switchPreflight.status} (Reachable: ${switchPreflight.reachable})`);
+    for (const [name, check] of Object.entries(switchPreflight.variables)) {
+      console.log(`  - ${name}: ${check.present ? (check.valid ? 'PRESENT & VALID' : 'PRESENT BUT INVALID') : 'MISSING'}`);
+    }
+  } catch (err) {
+    console.log(`[Switch AI Preflight] Probe error: ${err.message}`);
+  }
+
   return preflight;
 }
 

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle2, Info, ExternalLink, Shield, Plug, Unplug, Check, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Info, ExternalLink, Shield, Plug, Unplug, Check, AlertTriangle, Users, MessageSquare } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
-export default function IntegrationsView() {
+export default function IntegrationsView({ onNavigateTo }) {
   const { token, isAuthenticated } = useAuth();
   const [hubStatus, setHubStatus] = useState(null);
   const [authConfig, setAuthConfig] = useState(null);
   const [linearStatus, setLinearStatus] = useState(null);
+  const [switchPreflight, setSwitchPreflight] = useState(null);
   const [selectedIntegration, setSelectedIntegration] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -73,6 +74,11 @@ export default function IntegrationsView() {
       .then(res => res.json())
       .then(data => { if (data.success) setAuthConfig(data); })
       .catch(err => console.warn('Could not fetch auth config:', err.message));
+
+    fetch('http://localhost:4000/api/integrations/switch/preflight')
+      .then(res => res.json())
+      .then(data => { if (data.success) setSwitchPreflight(data.preflight); })
+      .catch(err => console.warn('Could not fetch switch preflight:', err.message));
 
     fetchLinearStatus();
 
@@ -256,19 +262,25 @@ export default function IntegrationsView() {
     },
     {
       id: 'switch',
-      name: 'Switch Collaboration',
-      mode: 'Roadmap',
-      status: 'PLANNED',
-      statusLabel: 'Planned / Unconfigured',
-      statusColor: '#64748b',
-      bgColor: '#f8fafc',
-      borderColor: '#e2e8f0',
+      name: 'Switch AI Collaboration',
+      mode: 'Agent Protocol v1',
+      status: switchPreflight?.status || 'UNCONFIGURED',
+      statusLabel: switchPreflight?.status === 'CONNECTED'
+        ? 'Connected & Reachable'
+        : switchPreflight?.status === 'CONFIGURED'
+          ? 'Reachable (Server Online)'
+          : switchPreflight?.status === 'UNREACHABLE'
+            ? 'Server Unreachable (Offline)'
+            : 'Unconfigured (Local Server)',
+      statusColor: switchPreflight?.status === 'CONNECTED' ? '#047857' : switchPreflight?.reachable ? '#0284c7' : switchPreflight?.status === 'UNREACHABLE' ? '#b91c1c' : '#b45309',
+      bgColor: switchPreflight?.status === 'CONNECTED' ? '#ecfdf5' : switchPreflight?.reachable ? '#f0f9ff' : switchPreflight?.status === 'UNREACHABLE' ? '#fef2f2' : '#fef3c7',
+      borderColor: switchPreflight?.status === 'CONNECTED' ? '#a7f3d0' : switchPreflight?.reachable ? '#bae6fd' : switchPreflight?.status === 'UNREACHABLE' ? '#fecaca' : '#fde68a',
       iconText: 'SW',
-      description: 'Real-time multi-player session synchronization and concurrent PM decision voting.',
-      configKey: 'SWITCH_CLIENT_SECRET',
-      isLiveConnected: false,
-      lastSync: 'Not connected',
-      badge: 'MULTIPLAYER'
+      description: 'Official Switch Agent Protocol v1. Connects decisions to live Switch chat rooms, syncs safe decision context, and drafts version-bound proposals for human PM review.',
+      configKey: 'SWITCH_SERVER_URL & SWITCH_REGISTRATION_TOKEN',
+      isLiveConnected: switchPreflight?.status === 'CONNECTED',
+      lastSync: switchPreflight?.reachable ? 'HTTP Operations + SSE / WebSocket Stream' : 'Switch server probe failed or not running',
+      badge: 'OFFICIAL SPONSOR'
     }
   ];
 
@@ -513,6 +525,50 @@ export default function IntegrationsView() {
                 </div>
               )}
 
+              {item.id === 'switch' && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onNavigateTo) onNavigateTo('switch');
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      background: '#4338ca',
+                      border: '1px solid #4338ca',
+                      color: '#ffffff',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <MessageSquare size={13} />
+                    <span>Open Collaboration Room</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIntegration({ id: 'switch_specs' })}
+                    title="View Switch Protocol Specs"
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#64748b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <ExternalLink size={13} />
+                  </button>
+                </div>
+              )}
+
               <div style={{
                 paddingTop: '12px',
                 borderTop: '1px solid #f1f5f9',
@@ -563,12 +619,16 @@ export default function IntegrationsView() {
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
                   {selectedIntegration.id === 'linear_setup'
                     ? 'Linear OAuth 2.0 Setup Guide'
-                    : 'Linear Integration Architecture'}
+                    : selectedIntegration.id === 'switch_specs'
+                      ? 'Switch Agent Protocol Architecture'
+                      : 'Linear Integration Architecture'}
                 </h3>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   {selectedIntegration.id === 'linear_setup'
                     ? 'Required environment variables to connect live Linear workspace'
-                    : 'AES-256-GCM token vault, PKCE state verification, and guarded issue creation'}
+                    : selectedIntegration.id === 'switch_specs'
+                      ? 'Official Switch wire contracts, safe context briefings, and version-bound proposals'
+                      : 'AES-256-GCM token vault, PKCE state verification, and guarded issue creation'}
                 </div>
               </div>
               <button
@@ -654,6 +714,36 @@ INTEGRATION_ENCRYPTION_KEY=64-char-hex-string-for-aes-256-gcm`}
                   <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', color: '#0f172a' }}>
                     {typeof window !== 'undefined' ? `${window.location.origin}/` : 'http://127.0.0.1:5173/'}
                   </code>
+                </div>
+              </div>
+            ) : selectedIntegration.id === 'switch_specs' ? (
+              <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <strong style={{ color: '#0f172a' }}>1. Official Wire Protocol:</strong>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Follows Switch Agent Protocol v1: <code>POST /agents</code> for registration, <code>POST /agents/{'{agent_id}'}/ops/create_room</code> for synchronous room creation, <code>POST /agents/{'{agent_id}'}/message</code> for messaging, and SSE / WebSocket streams for events.
+                  </p>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <strong style={{ color: '#0f172a' }}>2. Safe Context Briefing & Redaction:</strong>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Internal API tokens, secrets, encryption keys, and private hashes are strictly stripped before context is broadcast to the Switch room.
+                  </p>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <strong style={{ color: '#0f172a' }}>3. Decision-Version Bound Proposals:</strong>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Proposals from Switch discussions are bound to <code>decision.version</code>. If the decision changes before review, older proposals are rejected as <code>STALE</code>.
+                  </p>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <strong style={{ color: '#0f172a' }}>4. Human PM Gate & Linear Lock:</strong>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Switch agents cannot self-merge changes. A human PM must explicitly click <em>Accept & Merge</em>, which increments the decision version, invalidates prior approvals, and re-locks downstream Linear export.
+                  </p>
                 </div>
               </div>
             ) : (

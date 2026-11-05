@@ -8,7 +8,8 @@ import {
   Settings,
   PlusCircle,
   Database,
-  LogOut
+  LogOut,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -28,6 +29,7 @@ export default function LeftSidebar({
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'projects', label: 'Projects', icon: FolderKanban, badge: '1' },
     { id: 'decisions', label: 'Decisions', icon: FileCheck2, badge: `${decisionCount} Active` },
+    { id: 'switch', label: 'Switch Collaboration', icon: MessageSquare, badge: 'Sponsor' },
     { id: 'evidence', label: 'Evidence', icon: Layers, badge: `${sources.length}` },
     { id: 'integrations', label: 'Integrations', icon: Plug },
     { id: 'settings', label: 'Settings', icon: Settings }

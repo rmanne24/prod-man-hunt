@@ -126,14 +126,15 @@ export function requireRealUser(req, res, next) {
  */
 export function requireWorkspaceMember(req, res, next) {
   // Determine target workspace ID
-  let targetWorkspaceId = req.headers['x-workspace-id'] || req.query.workspaceId;
+  let targetWorkspaceId = req.params.workspaceId || req.headers['x-workspace-id'] || req.query.workspaceId;
 
   // If a decision ID is in the route parameter, check the decision's workspace
-  if (req.params.id) {
-    const meta = db.getDecisionMeta(req.params.id);
+  const decisionParam = req.params.decisionId || req.params.id;
+  if (decisionParam) {
+    const meta = db.getDecisionMeta(decisionParam);
     if (meta) {
       targetWorkspaceId = meta.workspaceId;
-    } else if (req.params.id === 'session_moonshot_checkout') {
+    } else if (decisionParam === 'session_moonshot_checkout') {
       targetWorkspaceId = 'ws_moonshot';
     }
   }

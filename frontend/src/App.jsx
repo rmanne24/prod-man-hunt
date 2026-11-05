@@ -7,6 +7,7 @@ import OverviewView from './components/OverviewView.jsx';
 import ProjectsView from './components/ProjectsView.jsx';
 import EvidenceView from './components/EvidenceView.jsx';
 import IntegrationsView from './components/IntegrationsView.jsx';
+import SwitchCollaborationView from './components/SwitchCollaborationView.jsx';
 import CaptureSourceModal from './components/CaptureSourceModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import OmniBar from './components/OmniBar.jsx';
@@ -612,7 +613,15 @@ function PMPilotWorkspace() {
             )}
 
             {activeNav === 'integrations' && (
-              <IntegrationsView />
+              <IntegrationsView onNavigateTo={(dest) => setActiveNav(dest)} />
+            )}
+
+            {activeNav === 'switch' && (
+              <SwitchCollaborationView
+                session={activeSession}
+                onRefreshSession={fetchSession}
+                onNavigateTo={(dest) => setActiveNav(dest)}
+              />
             )}
 
             {activeNav === 'artifacts' && (
