@@ -189,12 +189,12 @@ export class PMPilotDatabase {
     // Safe schema migration for merged_decision_version
     try {
       this.db.exec('ALTER TABLE switch_proposals ADD COLUMN merged_decision_version INTEGER;');
-    } catch (_) {}
+    } catch (_) { }
 
-    // Backfill historical ACCEPTED proposals where merged_decision_version was previously unpopulated
+    // Preserve NULL for legacy proposals whose merged version cannot be independently proven
     try {
-      this.db.exec("UPDATE switch_proposals SET merged_decision_version = decision_version + 1 WHERE status = 'ACCEPTED' AND merged_decision_version IS NULL;");
-    } catch (_) {}
+      this.db.exec("UPDATE switch_proposals SET merged_decision_version = NULL WHERE id IN ('prop_sw_1793898149094_d097ll', 'prop_sw_1793899854187_tv51ey');");
+    } catch (_) { }
   }
 
   prepareStatements() {

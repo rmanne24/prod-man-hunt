@@ -491,3 +491,156 @@ test('PROPOSAL VERSION TRACKING: Explicitly distinguishes proposal source versio
   assert.equal(refreshedA.merged_decision_version, 2);
   assert.equal(sessionV3.version, 3);
 });
+
+test('LEGACY PROPOSALS: Preserves NULL merged_decision_version when merge history cannot be proven', () => {
+  const legacyPropId = `prop_legacy_test_${Date.now()}`;
+  const workspaceId = 'ws_moonshot';
+  const decisionId = 'session_moonshot_checkout';
+
+  // Seed legacy accepted proposal without merged_decision_version
+  const saved = db.saveSwitchProposal({
+    id: legacyPropId,
+    workspaceId,
+    decisionId,
+    decisionVersion: 2,
+    roomId: 'sw_room_legacy',
+    proposalType: 'REQUIREMENT_CHANGE',
+    summary: 'Legacy proposal without proven merged version',
+    status: 'ACCEPTED',
+    proposedBy: 'Historical PM'
+  });
+
+  assert.equal(saved.status, 'ACCEPTED');
+  assert.equal(saved.decision_version, 2);
+  assert.equal(saved.merged_decision_version, null, 'Must preserve NULL for unproven historical records');
+
+  const retrieved = db.getSwitchProposalById(legacyPropId);
+  assert.equal(retrieved.merged_decision_version, null);
+
+  const all = db.getSwitchProposals(workspaceId, decisionId);
+  const found = all.find(p => p.id === legacyPropId);
+  assert.ok(found);
+  assert.equal(found.merged_decision_version, null);
+});
+
+test('COMPLETE 10-STEP LIFECYCLE SEQUENCE: Switch message -> proposal -> merge -> version increment -> approval stale -> Linear lock -> re-approval -> unlock -> mutation relock', async () => {
+  const decisionId = `test_dec_full_seq_${Date.now()}`;
+  const workspaceId = 'ws_moonshot';
+  const roomId = `sw_room_seq_${Date.now()}`;
+
+  // Step 0: Initialize canonical decision at v1
+  const record = createDecisionRecord({
+    id: decisionId,
+    title: '10-Step Full Lifecycle Decision',
+    workspace: workspaceId
+  });
+  record.workspaceId = workspaceId;
+  record.status = DECISION_STATES.RECOMMENDATION_READY;
+  await RedisStateManager.saveDecision(record);
+
+  // Initial approval at v1
+  await RedisStateManager.submitApproval(decisionId, {
+    action: 'APPROVE',
+    decisionVersion: 1,
+    callerIdentity: { name: 'Initial PM' },
+    rationale: 'Baseline v1 approved'
+  });
+  let currentDecision = await RedisStateManager.getSession(decisionId);
+  assert.equal(currentDecision.version, 1);
+  assert.equal(currentDecision.approvalRecord?.status, 'APPROVED');
+
+  // Step 1: Receive a real inbound Switch message and persist in SQLite
+  const inboundMsg = db.saveSwitchMessage({
+    workspaceId,
+    decisionId,
+    roomId,
+    sender: 'Switch Assistant',
+    role: 'AGENT',
+    content: 'Telemetry analysis complete: cart abandonment can be reduced by 14% with 3-item tray.',
+    isSimulated: 0
+  });
+  assert.ok(inboundMsg.id);
+  assert.equal(inboundMsg.is_simulated, 0, 'Inbound Switch message recorded with is_simulated: 0');
+
+  // Step 2: Create a proposal against the current decision version (v1)
+  const proposal = await switchService.createStructuredProposal({
+    workspaceId,
+    decisionId,
+    roomId,
+    proposalType: 'REQUIREMENT_CHANGE',
+    summary: 'Adopt 3-item tray constraint based on inbound telemetry',
+    proposedChanges: { title: '10-Step Full Lifecycle Decision [3-Item Tray]' },
+    proposedBy: 'Switch Assistant'
+  });
+  assert.equal(proposal.decision_version, 1, 'Proposal authored against current version v1');
+  assert.equal(proposal.status, 'PENDING');
+  assert.equal(proposal.merged_decision_version, null, 'Pending proposal has no merged version');
+
+  // Step 3: Accept and merge the proposal
+  const mergeResult = await switchService.applyProposalToDecision({
+    workspaceId,
+    proposalId: proposal.id,
+    user: { name: 'Human PM' }
+  });
+  assert.equal(mergeResult.success, true);
+  assert.equal(mergeResult.status, 'ACCEPTED');
+
+  // Step 4: Confirm the canonical decision version increments to v2
+  currentDecision = await RedisStateManager.getSession(decisionId);
+  assert.equal(currentDecision.version, 2, 'Canonical decision version must increment to 2');
+
+  // Step 5: Confirm the proposal stores the exact resulting merged version (v2)
+  const persistedProp = db.getSwitchProposalById(proposal.id);
+  assert.equal(persistedProp.status, 'ACCEPTED');
+  assert.equal(persistedProp.decision_version, 1, 'Proposal source version remains 1');
+  assert.equal(persistedProp.merged_decision_version, 2, 'Proposal stores exact merged version 2');
+
+  // Step 6: Confirm the previous approval becomes stale
+  assert.equal(currentDecision.approvalRecord?.status, 'PENDING', 'Approval reset to PENDING');
+  assert.equal(currentDecision.approvalRecord?.approvedDecisionVersion, null, 'approvedDecisionVersion is cleared');
+
+  // Step 7: Confirm Linear export remains locked
+  await assert.rejects(
+    async () => {
+      await RedisStateManager.guardArtifactGeneration(decisionId);
+    },
+    (err) => {
+      assert(err instanceof StateTransitionError);
+      assert.equal(err.statusCode, 403, 'Linear export must remain locked');
+      return true;
+    }
+  );
+
+  // Step 8: Obtain explicit human approval for the new active version (v2)
+  const approvedV2 = await RedisStateManager.submitApproval(decisionId, {
+    action: 'APPROVE',
+    decisionVersion: 2,
+    callerIdentity: { name: 'Human PM' },
+    rationale: 'Approved merged 3-item tray for v2 release'
+  });
+  assert.equal(approvedV2.version, 2);
+  assert.equal(approvedV2.approvalRecord?.status, 'APPROVED');
+  assert.equal(approvedV2.approvalRecord?.approvedDecisionVersion, 2);
+
+  // Step 9: Confirm Linear export unlocks only after that approval
+  await assert.doesNotReject(async () => {
+    await RedisStateManager.guardArtifactGeneration(decisionId);
+  });
+
+  // Step 10: Mutate the decision again and confirm approval is invalidated and export relocks
+  await RedisStateManager.reopenDecision(decisionId, 'PM reopened for fraud guard revision');
+  const mutatedV3 = await RedisStateManager.getSession(decisionId);
+  assert.equal(mutatedV3.version, 3, 'Decision version advanced to 3');
+  assert.equal(mutatedV3.approvalRecord?.status, 'PENDING', 'Approval invalidated upon material mutation');
+
+  await assert.rejects(
+    async () => {
+      await RedisStateManager.guardArtifactGeneration(decisionId);
+    },
+    (err) => {
+      assert(err instanceof StateTransitionError);
+      assert.equal(err.statusCode, 403, 'Linear export must relock after mutation');
+      return true;
+    }
+  );
+});

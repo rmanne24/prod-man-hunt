@@ -953,7 +953,8 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
             ) : (
               proposals.map((prop) => {
                 const sourceVersion = prop.decision_version;
-                const mergedVersion = prop.merged_decision_version || (prop.status === 'ACCEPTED' ? sourceVersion + 1 : null);
+                const hasMergedVersion = prop.merged_decision_version != null && prop.merged_decision_version !== undefined;
+                const mergedVersion = hasMergedVersion ? prop.merged_decision_version : null;
                 const isStale = prop.status === 'STALE' || (prop.status === 'PENDING' && sourceVersion !== currentVersion);
                 const isAccepted = prop.status === 'ACCEPTED';
                 const isRejected = prop.status === 'REJECTED';
@@ -993,18 +994,32 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                         }} title={`Proposal authored against Decision v${sourceVersion}`}>
                           Source: v{sourceVersion}
                         </span>
-                        {isAccepted && mergedVersion && (
-                          <span style={{
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: '#dcfce7',
-                            color: '#166534',
-                            border: '1px solid #bbf7d0'
-                          }} title={`Merged into Decision specification v${mergedVersion}`}>
-                            Merged: v{mergedVersion}
-                          </span>
+                        {isAccepted && (
+                          hasMergedVersion ? (
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: '#dcfce7',
+                              color: '#166534',
+                              border: '1px solid #bbf7d0'
+                            }} title={`Merged into Decision specification v${mergedVersion}`}>
+                              Merged: v{mergedVersion}
+                            </span>
+                          ) : (
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: '#f1f5f9',
+                              color: '#64748b',
+                              border: '1px solid #e2e8f0'
+                            }} title="Merged version unavailable (legacy record)">
+                              Merged: Legacy Record
+                            </span>
+                          )
                         )}
                         <span style={{
                           fontSize: '10px',
@@ -1149,7 +1164,11 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
                             Accepted Proposal
                           </span>
                         </div>
-                        {mergedVersion === currentVersion ? (
+                        {!hasMergedVersion ? (
+                          <span style={{ color: '#64748b', fontWeight: 500 }}>
+                            Merged version unavailable (legacy record) · Proposal was accepted in a prior session before merged version tracking · Current active decision is v{currentVersion} ({isCurrentVersionApproved ? `Approved at v${currentVersion}` : 'Pending Review'})
+                          </span>
+                        ) : mergedVersion === currentVersion ? (
                           isCurrentVersionApproved ? (
                             <span style={{ color: '#15803d', fontWeight: 600 }}>
                               Merged into active Decision v{mergedVersion} · Human PM Approved at v{currentVersion} (Linear Export Unlocked)
