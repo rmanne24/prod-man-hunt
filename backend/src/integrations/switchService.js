@@ -20,12 +20,16 @@
  */
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { db } from '../db/database.js';
 import { RedisStateManager } from '../services/redisState.js';
 
 class SwitchService {
   constructor() {
     this.activeStreams = new Map(); // roomId -> AbortController
+    this.cachedApiKey = null;
+    this.cachedAgentId = null;
   }
 
   getServerUrl() {
@@ -38,11 +42,11 @@ class SwitchService {
   }
 
   getAgentApiKey() {
-    return process.env.SWITCH_AGENT_API_KEY || null;
+    return this.cachedApiKey || process.env.SWITCH_AGENT_API_KEY || null;
   }
 
   getAgentId() {
-    return process.env.SWITCH_AGENT_ID || 'ag_pmpilot_assistant';
+    return this.cachedAgentId || process.env.SWITCH_AGENT_ID || 'ag_pmpilot_assistant';
   }
 
   /**
@@ -87,28 +91,31 @@ class SwitchService {
     let serverHealth = null;
     let probeError = null;
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch(`${serverUrl}/health`, {
-        signal: controller.signal,
-        headers: { Accept: 'application/json' }
-      });
-      clearTimeout(timeoutId);
+    // Only probe health if SWITCH_SERVER_URL is explicitly configured
+    if (variables.SWITCH_SERVER_URL.present) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(`${serverUrl}/health`, {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' }
+        });
+        clearTimeout(timeoutId);
 
-      if (res.ok) {
-        reachable = true;
-        try {
-          serverHealth = await res.json();
-        } catch (_) {
-          serverHealth = { status: 'healthy', httpStatus: res.status };
+        if (res.ok) {
+          reachable = true;
+          try {
+            serverHealth = await res.json();
+          } catch (_) {
+            serverHealth = { status: 'healthy', httpStatus: res.status };
+          }
+        } else {
+          probeError = `HTTP ${res.status}: ${res.statusText}`;
         }
-      } else {
-        probeError = `HTTP ${res.status}: ${res.statusText}`;
+      } catch (err) {
+        reachable = false;
+        probeError = err.name === 'AbortError' ? 'Connection timed out (2500ms)' : err.message;
       }
-    } catch (err) {
-      reachable = false;
-      probeError = err.name === 'AbortError' ? 'Connection timed out (2500ms)' : err.message;
     }
 
     let status = 'UNCONFIGURED';
@@ -154,7 +161,11 @@ class SwitchService {
       description: 'Grounded product decision AI assistant for PMPilot. Facilitates evidence-backed trade-off reviews and structured proposal drafting.',
       connector_type: 'pmpilot',
       integration_profile: {
-        connection_model: 'always_on'
+        connection_model: 'always_on',
+        message_exchange: true,
+        pre_invocation_mediation: [],
+        post_invocation_mediation: [],
+        event_reporting: []
       },
       overwrite
     };
@@ -179,9 +190,54 @@ class SwitchService {
     }
 
     const agentData = await res.json();
+    const agentId = agentData.id || agentData.agent_id || 'ag_pmpilot_assistant';
+    const apiKey = agentData.api_key || null;
+
+    if (apiKey) {
+      this.cachedApiKey = apiKey;
+      this.cachedAgentId = agentId;
+      process.env.SWITCH_AGENT_API_KEY = apiKey;
+      process.env.SWITCH_AGENT_ID = agentId;
+
+      // Safely persist into backend/.env without exposing secrets
+      try {
+        const cwd = process.cwd();
+        const envPath = fs.existsSync(path.resolve(cwd, '.env'))
+          ? path.resolve(cwd, '.env')
+          : path.resolve(cwd, 'backend', '.env');
+
+        if (fs.existsSync(envPath)) {
+          let envContent = fs.readFileSync(envPath, 'utf8');
+          if (!envContent.includes('SWITCH_AGENT_API_KEY')) {
+            envContent += `\nSWITCH_AGENT_API_KEY=${apiKey}`;
+          } else {
+            envContent = envContent.replace(/^SWITCH_AGENT_API_KEY=.*/m, `SWITCH_AGENT_API_KEY=${apiKey}`);
+          }
+          if (!envContent.includes('SWITCH_AGENT_ID')) {
+            envContent += `\nSWITCH_AGENT_ID=${agentId}`;
+          } else {
+            envContent = envContent.replace(/^SWITCH_AGENT_ID=.*/m, `SWITCH_AGENT_ID=${agentId}`);
+          }
+          fs.writeFileSync(envPath, envContent, 'utf8');
+        }
+      } catch (_) {}
+
+      // Update addressing so any room participant can address the agent
+      try {
+        await fetch(`${serverUrl}/agents/${agentId}/ops/update_agent_detail`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({ agent_id: agentId, addressing: 'anyone' })
+        });
+      } catch (_) {}
+    }
+
     return {
-      agentId: agentData.id || agentData.agent_id || 'ag_pmpilot_assistant',
-      apiKey: agentData.api_key || null,
+      agentId,
+      apiKey,
       name: payload.name,
       connectionModel: 'always_on'
     };
@@ -256,10 +312,15 @@ class SwitchService {
     // 1. Check SQLite for existing mapped room (idempotency guard with auto-sync)
     const existing = await this.getRoomForDecision(workspaceId, decisionId);
     if (existing && existing.status === 'ACTIVE') {
-      return {
-        ...existing,
-        isExisting: true
-      };
+      const apiKey = this.getAgentApiKey();
+      const isSimulatedPlaceholder = existing.room_id?.startsWith('sw_room_') && !existing.room_url;
+      // If we now have a real Switch connection but the stored room is a local simulated placeholder, upgrade it to a live Switch room
+      if (!isSimulatedPlaceholder || !apiKey) {
+        return {
+          ...existing,
+          isExisting: true
+        };
+      }
     }
 
     // 2. Fetch canonical decision state
@@ -307,14 +368,15 @@ class SwitchService {
           body: JSON.stringify({
             name: roomName,
             description: roomDescription,
-            instructions: roomInstructions
+            agent_names: ['pmpilot-decision-assistant'],
+            internal_only: true
           })
         });
 
         if (opRes.ok) {
           const opData = await opRes.json();
-          remoteRoomId = opData.result?.id || opData.result?.room_id || opData.room_id || null;
-          remoteRoomUrl = opData.result?.url || `${serverUrl}/rooms/${remoteRoomId}`;
+          remoteRoomId = opData.result?.room?.id || opData.result?.id || opData.result?.room_id || opData.room_id || null;
+          remoteRoomUrl = opData.result?.url || (remoteRoomId ? `${serverUrl}/rooms/${remoteRoomId}` : null);
         }
       } catch (err) {
         // Fall back gracefully to local mapped room record if live server call fails
@@ -340,6 +402,11 @@ class SwitchService {
       sharedAtVersion: decision.version
     });
 
+    // 5. Connect inbound event stream if live room was provisioned
+    if (remoteRoomId && apiKey) {
+      this.startInboundStream({ workspaceId, decisionId, roomId, connectionId });
+    }
+
     return {
       ...saved,
       isExisting: false,
@@ -348,11 +415,158 @@ class SwitchService {
   }
 
   /**
+   * Synchronizes message history from Switch room into SQLite.
+   * Fetches official HistoryResponse from GET /agents/{agent_id}/rooms/{room_id}/history
+   */
+  async syncRoomHistory(workspaceId, decisionId, roomId) {
+    if (!workspaceId || !decisionId || !roomId) return;
+    const serverUrl = this.getServerUrl();
+    const apiKey = this.getAgentApiKey();
+    const agentId = this.getAgentId();
+    if (!apiKey || !roomId || roomId.startsWith('sw_room_sim_')) return;
+
+    try {
+      const res = await fetch(`${serverUrl}/agents/${agentId}/rooms/${roomId}/history?limit=50`, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const events = data.events || [];
+        for (const ev of events) {
+          const body = ev.body;
+          if (!body) continue;
+          const isMe = ev.sender === agentId;
+          const sender = isMe ? 'PMPilot Decision Assistant' : (ev.sender_name || ev.sender || 'Switch Participant');
+          const role = isMe ? 'AGENT' : 'USER';
+          const msgId = `sw_hist_${roomId}_${ev.timestamp || Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+          // Check if message is already recorded in SQLite
+          const existing = db.getSwitchMessages(workspaceId, decisionId);
+          const alreadyExists = existing.some(m => m.content === body && m.sender === sender);
+          if (!alreadyExists) {
+            db.saveSwitchMessage({
+              id: msgId,
+              workspaceId,
+              decisionId,
+              roomId,
+              sender,
+              role,
+              content: this.sanitizeMessage(body),
+              isSimulated: 0,
+              createdAt: ev.timestamp ? new Date(ev.timestamp).toISOString() : new Date().toISOString()
+            });
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Starts an inbound SSE stream listener with heartbeat pings
+   * Connects to GET /agents/{agent_id}/events and sends POST /agents/{agent_id}/connection/beat
+   */
+  startInboundStream({ workspaceId, decisionId, roomId, connectionId }) {
+    if (!roomId || !workspaceId || !decisionId) return;
+    if (this.activeStreams.has(roomId)) return;
+
+    const serverUrl = this.getServerUrl();
+    const apiKey = this.getAgentApiKey();
+    const agentId = this.getAgentId();
+    if (!apiKey) return;
+
+    const connId = connectionId || crypto.randomUUID();
+    const controller = new AbortController();
+    this.activeStreams.set(roomId, controller);
+
+    let cursor = 0;
+    const beatInterval = setInterval(async () => {
+      try {
+        await fetch(`${serverUrl}/agents/${agentId}/connection/beat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({ connection_id: connId, cursor })
+        });
+      } catch (_) {}
+    }, 2000);
+
+    // Background SSE consumer
+    (async () => {
+      try {
+        const url = `${serverUrl}/agents/${agentId}/events?connection_id=${encodeURIComponent(connId)}&rooms=${encodeURIComponent(roomId)}&scope=single`;
+        const res = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': 'text/event-stream'
+          },
+          signal: controller.signal
+        });
+
+        if (!res.ok) {
+          clearInterval(beatInterval);
+          this.activeStreams.delete(roomId);
+          return;
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) return;
+
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += new TextDecoder().decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('id:')) {
+              const seq = parseInt(line.slice(3).trim(), 10);
+              if (!isNaN(seq)) cursor = seq;
+            } else if (line.startsWith('data:')) {
+              try {
+                const data = JSON.parse(line.slice(5).trim());
+                if (data && (data.body || data.content || data.message)) {
+                  const content = data.body || data.content || data.message;
+                  const sender = data.sender_name || data.sender || 'Switch Fabric';
+                  const role = data.sender === agentId ? 'AGENT' : 'USER';
+                  db.saveSwitchMessage({
+                    workspaceId,
+                    decisionId,
+                    roomId,
+                    sender,
+                    role,
+                    content: this.sanitizeMessage(content),
+                    isSimulated: 0
+                  });
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (_) {
+      } finally {
+        clearInterval(beatInterval);
+        this.activeStreams.delete(roomId);
+      }
+    })();
+  }
+
+  /**
    * Retrieves messages for a decision collaboration room.
-   * If no messages exist yet, seeds an initial discussion thread labeled as simulated demo data.
+   * Synchronizes real Switch events if available; falls back to honest simulated data if unconfigured.
    */
   getMessagesForDecision({ workspaceId, decisionId, roomId }) {
     if (!workspaceId || !decisionId) return [];
+
+    // Trigger async sync in background if connected to live room
+    this.syncRoomHistory(workspaceId, decisionId, roomId).catch(() => {});
+
     let messages = db.getSwitchMessages(workspaceId, decisionId);
 
     if (messages.length === 0) {
@@ -452,6 +666,11 @@ class SwitchService {
       content: cleanContent,
       isSimulated: delivered ? 0 : 1
     });
+
+    // If delivered to live Switch room, trigger a history sync
+    if (delivered) {
+      await this.syncRoomHistory(workspaceId, decisionId, roomId);
+    }
 
     // If Switch server is unconfigured or offline, generate an honest simulated assistant acknowledgement
     let savedReplyMsg = null;

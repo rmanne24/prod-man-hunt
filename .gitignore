@@ -28,6 +28,10 @@ yarn-error.log*
 pnpm-debug.log*
 *.log
 
+# Scratch and temp tools
+scratch/
+scratch_*.js
+
 # Editor & OS
 .vscode/
 .idea/

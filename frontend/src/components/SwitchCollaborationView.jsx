@@ -756,7 +756,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
             {messages.map((m) => {
               const isAgent = m.role === 'AGENT';
               const isSystem = m.role === 'SYSTEM';
-              const isSimulated = m.is_simulated !== false;
+              const isSimulated = Boolean(m.is_simulated === 1 || m.is_simulated === true || m.is_simulated === '1');
               const text = m.content || m.text || '';
               const timeDisplay = m.created_at
                 ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
