@@ -33,6 +33,21 @@ dotenv.config({ path: path.resolve(__serverDir, "../.env") });
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Enable reverse proxy trust for accurate client IP in rate limiting & logs
+app.set('trust proxy', 1);
+
+// Standard HTTP Security Headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (process.env.NODE_ENV === 'production' && req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
   : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4000', 'http://127.0.0.1:4000'];
@@ -482,8 +497,8 @@ app.post("/api/session/:sessionId/action", requireWorkspaceMember, async (req, r
   }
 });
 
-// Guarded PRD async job trigger
-app.post("/api/jobs/prd", async (req, res) => {
+// Guarded PRD async job trigger (Guarded by workspace authorization)
+app.post("/api/jobs/prd", requireWorkspaceMember, async (req, res) => {
   try {
     const sessionId = req.body.sessionId || "session_moonshot_checkout";
 
@@ -758,8 +773,8 @@ app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/proposals/:p
 
 /* ------------------- DELIVERY EXPORT ROUTES (GUARDED) ------------------- */
 
-// Guarded Linear sprint backlog export
-app.post("/api/export/linear", async (req, res) => {
+// Guarded Linear sprint backlog export (Guarded by workspace authorization)
+app.post("/api/export/linear", requireWorkspaceMember, async (req, res) => {
   try {
     const { decisionId, tickets } = req.body;
     const targetId = decisionId || "session_moonshot_checkout";
@@ -790,8 +805,8 @@ app.post("/api/export/linear", async (req, res) => {
   }
 });
 
-// Guarded Slack product release broadcast
-app.post("/api/export/slack", async (req, res) => {
+// Guarded Slack product release broadcast (Guarded by workspace authorization)
+app.post("/api/export/slack", requireWorkspaceMember, async (req, res) => {
   try {
     const { decisionId, channel, message } = req.body;
     const targetId = decisionId || "session_moonshot_checkout";

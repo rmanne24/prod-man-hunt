@@ -35,3 +35,4 @@ EXPOSE 4000
 VOLUME ["/app/backend/data"]
 
 CMD ["node", "src/server.js"]
+

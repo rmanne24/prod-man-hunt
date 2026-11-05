@@ -38,8 +38,13 @@ class SlidingWindowRateLimiter {
         return next();
       }
 
-      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown-ip';
-      const key = `${ip}:${req.path}`;
+      let clientIp = req.ip;
+      if (!clientIp && req.headers['x-forwarded-for']) {
+        const forwarded = req.headers['x-forwarded-for'];
+        clientIp = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : forwarded[0];
+      }
+      clientIp = clientIp || req.socket?.remoteAddress || 'unknown-ip';
+      const key = `${clientIp}:${req.path}`;
       const now = Date.now();
 
       const timestamps = this.hits.get(key) || [];
@@ -69,3 +74,4 @@ export function createRateLimiter(options) {
   const limiter = new SlidingWindowRateLimiter(options);
   return limiter.middleware();
 }
+

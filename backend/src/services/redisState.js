@@ -119,6 +119,10 @@ export function adaptDecisionToSession(decision) {
 
 // Initialize seed synthetic demo decision
 function initializeSeed() {
+  const shouldSeed = process.env.NODE_ENV !== 'production' || process.env.ENABLE_DEMO_SEED === 'true';
+  if (!shouldSeed) {
+    return;
+  }
   const existing = db.getDecision('session_moonshot_checkout');
   if (existing) {
     memoryStore.set('session_moonshot_checkout', existing);

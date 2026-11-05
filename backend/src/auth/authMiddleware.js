@@ -128,8 +128,8 @@ export function requireWorkspaceMember(req, res, next) {
   // Determine target workspace ID
   let targetWorkspaceId = req.params.workspaceId || req.headers['x-workspace-id'] || req.query.workspaceId;
 
-  // If a decision or session ID is in the route parameter, check its workspace
-  const decisionParam = req.params.decisionId || req.params.id || req.params.sessionId;
+  // If a decision or session ID is in the route parameter, body, or query, check its workspace
+  const decisionParam = req.params.decisionId || req.params.id || req.params.sessionId || req.body?.decisionId || req.body?.sessionId;
   if (decisionParam) {
     const meta = db.getDecisionMeta(decisionParam);
     if (meta) {

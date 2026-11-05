@@ -14,8 +14,13 @@ import { db } from '../db/database.js';
 import { oidcService } from './oidcService.js';
 
 // Secret key for HMAC token signing (falls back to random ephemeral secret in development if unset)
+if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET && !process.env.AUTH0_CLIENT_SECRET) {
+  console.warn('[SECURITY WARNING] SESSION_SECRET is not configured in production environment! Using ephemeral secret: tokens will invalidate upon restart.');
+}
+
 const SESSION_SECRET = process.env.SESSION_SECRET || process.env.AUTH0_CLIENT_SECRET || crypto.randomBytes(32).toString('hex');
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const PBKDF2_ITERATIONS = 210000; // OWASP recommendation for PBKDF2-HMAC-SHA512
 
 class AuthService {
   constructor() {
@@ -23,6 +28,11 @@ class AuthService {
   }
 
   seedDefaultWorkspaceAndUser() {
+    const shouldSeed = process.env.NODE_ENV !== 'production' || process.env.ENABLE_DEMO_SEED === 'true';
+    if (!shouldSeed) {
+      return;
+    }
+
     const email = 'pm@pmpilot.ai';
     const password = 'PMPilotDemo2026!';
     const name = 'Lead Product Manager';
@@ -63,15 +73,22 @@ class AuthService {
 
   hashPassword(password) {
     const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
-    return { salt, hash };
+    const hash = crypto.pbkdf2Sync(password, salt, PBKDF2_ITERATIONS, 64, 'sha512').toString('hex');
+    return { salt, hash: `pbkdf2$${PBKDF2_ITERATIONS}$${hash}` };
   }
 
   verifyPassword(password, storedHash, salt) {
     if (!storedHash || !salt) return false;
-    const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+    let iterations = 100000; // legacy default
+    let targetHash = storedHash;
+    if (storedHash.startsWith('pbkdf2$')) {
+      const parts = storedHash.split('$');
+      iterations = parseInt(parts[1], 10) || PBKDF2_ITERATIONS;
+      targetHash = parts[2];
+    }
+    const hash = crypto.pbkdf2Sync(password, salt, iterations, 64, 'sha512').toString('hex');
     try {
-      return crypto.timingSafeEqual(Buffer.from(hash, 'utf8'), Buffer.from(storedHash, 'utf8'));
+      return crypto.timingSafeEqual(Buffer.from(hash, 'utf8'), Buffer.from(targetHash, 'utf8'));
     } catch {
       return false;
     }
@@ -87,6 +104,7 @@ class AuthService {
     const exp = now + expiresInMs;
     const wsId = targetWorkspaceId || user.workspaceId || null;
     const payload = {
+      jti: crypto.randomBytes(16).toString('hex'),
       sub: user.id,
       email: user.email,
       name: user.name,
@@ -155,21 +173,35 @@ class AuthService {
   }
 
   registerUser({ email, password, name, workspaceName }) {
-    if (!email || !email.includes('@')) {
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
       throw new Error('A valid email address is required.');
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.length > 254) {
+      throw new Error('Email address exceeds maximum length of 254 characters.');
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      throw new Error('A valid email address is required.');
+    }
+
     const existing = db.getUserByEmail(cleanEmail);
     if (existing) {
       throw new Error('An account with this email already exists.');
     }
 
-    if (!password || password.length < 8) {
+    if (!password || typeof password !== 'string' || password.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
 
-    const cleanName = (name || cleanEmail.split('@')[0]).trim();
+    if (password.length > 128) {
+      throw new Error('Password exceeds maximum allowed length of 128 characters.');
+    }
+
+    const rawName = (name || cleanEmail.split('@')[0]).trim();
+    const cleanName = rawName.slice(0, 100);
     const { salt, hash } = this.hashPassword(password);
     const userId = `usr_${crypto.randomBytes(8).toString('hex')}`;
 
@@ -185,7 +217,8 @@ class AuthService {
     });
 
     // Provision dedicated personal workspace for new tenant
-    const cleanWsName = (workspaceName || `${cleanName}'s Workspace`).trim();
+    const rawWsName = (workspaceName || `${cleanName}'s Workspace`).trim();
+    const cleanWsName = rawWsName.slice(0, 100);
     const wsId = `ws_${crypto.randomBytes(6).toString('hex')}`;
     db.createWorkspace({
       id: wsId,

@@ -348,3 +348,4 @@ export default function NewDecisionModal({ isOpen, onClose, onCreated, workspace
     </div>
   );
 }
+

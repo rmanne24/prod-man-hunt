@@ -264,8 +264,11 @@ export function submitHumanApproval(decision, {
     );
   }
 
-  // 4. Validate lifecycle precondition: Can only approve if recommendation is ready or awaiting approval
+  // 4. Validate lifecycle precondition: Can only approve if recommendation is ready or awaiting approval (or draft/triage with no blocking conflicts)
   const approvableStates = [
+    DECISION_STATES.DRAFT,
+    DECISION_STATES.TRIAGE,
+    DECISION_STATES.EVIDENCE_REVIEW,
     DECISION_STATES.RECOMMENDATION_READY,
     DECISION_STATES.AWAITING_HUMAN_APPROVAL,
     DECISION_STATES.NEEDS_REVISION
