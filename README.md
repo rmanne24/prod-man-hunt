@@ -81,6 +81,7 @@ Product Managers spend countless hours tab-switching between **Notion** PRDs, **
 | **Redis** | Working agent memory, active project tab state, session persistence, and decision history. |
 | **Trigger.dev** | Long-running asynchronous PRD generation, sprint planning, and competitor scanning workflows. |
 | **Mozilla.ai** | Trust and privacy engine, boilerplate stripping, and epistemic classification (`OBSERVED`, `INFERRED`, `ASSUMED`, `UNKNOWN`). |
+| **Switch AI** | Live Agent Protocol v1 collaboration fabric, multiplayer Switch rooms, safe context briefing synchronization, and version-bound structured change proposals with human sign-off gates. |
 | **OpenRouter** | Intelligent model routing and resilient fallback gateway. |
 | **Auth0** | Workspace identity and tenant permission boundary. |
 
@@ -106,7 +107,9 @@ Every single node in the **Evidence Graph** provides click-to-inspect proof and 
 PMPilot operates across every surface of a product manager's day:
 
 ### 1. At Work: Real-time Workflow & Collaboration
+- **Switch AI Collaboration**: Official Switch Agent Protocol v1 integration connecting decisions to live Switch chat rooms. Auto-synchronizes safe decision context, receives real-time SSE event streams, and formulates version-bound structured change proposals with human PM sign-off gates.
 - **Slack**: Automated channel briefings, PRD cards, and contradiction alert webhooks to `#product-announcements`.
+- **Linear**: OAuth 2.0 PKCE sprint backlog issue export, guarded strictly by active decision approval version locks.
 - **Microsoft Teams**: Adaptive Cards dispatched directly to strategy and engineering review channels.
 - **Email**: Executive stakeholder digests and automated customer cart-abandonment recovery copy.
 - **Documents**: 1-click living document export to Notion, Google Docs, and Markdown.
@@ -152,6 +155,7 @@ PMPilot includes a dedicated **API Keys & Credits Configuration** panel (accessi
 ### Prerequisites
 - Node.js (v18+)
 - npm (v9+)
+- Docker Desktop (for live Switch Core collaboration fabric)
 - Google Chrome (for extension)
 
 ### 1. Clone & Install Dependencies
@@ -159,23 +163,50 @@ PMPilot includes a dedicated **API Keys & Credits Configuration** panel (accessi
 git clone https://github.com/rmanne24/prod-man-hunt.git
 cd prod-man-hunt
 
-# One-command install all dependencies
-npm run install:all
+# Install all workspace dependencies
+npm install
+npm --prefix backend install
+npm --prefix frontend install
 ```
 
-### 2. Configure Environment (Optional)
-Copy `.env.example` to `.env` in `backend/` or enter keys directly in the in-app **API Keys & Credits** settings:
+### 2. Launch Switch Core via Docker (Official Hackathon Sponsor)
+```bash
+# Clone and spin up Switch Core locally
+git clone https://github.com/sandbox-quantum/switch.git switch-core
+cd switch-core
+docker compose up -d
+```
+Verify Switch Core is healthy at `http://127.0.0.1:8000/health` (returns `{"status":"ok"}`).
+
+### 3. Configure Environment
+Copy `backend/.env.example` to `backend/.env` and configure credentials:
 ```bash
 cp backend/.env.example backend/.env
 ```
-*(Note: PMPilot includes a built-in resilient simulation and fallback layer so it works out-of-the-box immediately even without external API keys!)*
+Key configuration items:
+- `SWITCH_SERVER_URL=http://localhost:8000`
+- `SWITCH_REGISTRATION_TOKEN` & `SWITCH_AGENT_API_KEY` (registered via Switch Agent Protocol)
+- `LINEAR_CLIENT_ID` & `LINEAR_CLIENT_SECRET` (for Linear OAuth)
+- `INTEGRATION_ENCRYPTION_KEY` (32 bytes hex for AES-256-GCM token encryption)
 
-### 3. Launch with One Command!
+*(Note: If Switch Core is offline or credentials are unset, PMPilot gracefully falls back to honest Evaluator Simulation Mode with zero crashes or false claims!)*
+
+### 4. Launch PMPilot with One Command!
 ```bash
 # Starts both Backend (port 4000) and Frontend (port 5173) concurrently:
-npm run dev
+npm start
 ```
 Open **`http://localhost:5173`** in your browser!
+
+### 5. Run Full Verification Test Suite
+```bash
+# Run all 75 backend unit and integration tests:
+npm --prefix backend run test:all
+
+# Run frontend lint and production build:
+npm --prefix frontend run lint
+npm --prefix frontend run build
+```
 
 
 ### 4. Load the Chrome Extension
