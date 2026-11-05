@@ -88,6 +88,7 @@ export default function IntegrationsView() {
   }, [fetchLinearStatus, handleLinearCallback]);
 
   const handleConnectLinear = async () => {
+    setActionMessage(null);
     if (!linearStatus?.configured) {
       setSelectedIntegration({ id: 'linear_setup' });
       return;

@@ -453,7 +453,7 @@ app.get("/api/workspaces/:workspaceId/integrations/linear/authorize-url", requir
     });
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: linearService.sanitizeErrorMessage(err.message) });
   }
 });
 
@@ -473,7 +473,7 @@ app.post("/api/workspaces/:workspaceId/integrations/linear/callback", requireWor
     });
     res.json({ success: true, connection: result });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: linearService.sanitizeErrorMessage(err.message) });
   }
 });
 

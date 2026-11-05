@@ -262,6 +262,56 @@ test('PREFLIGHT: Safe check reports presence and validity without leaking secret
   }
 });
 
+test('AUTHORIZE URL: Uses actor=user and strictly does NOT use deprecated actor=application', () => {
+  const origId = process.env.LINEAR_CLIENT_ID;
+  const origSecret = process.env.LINEAR_CLIENT_SECRET;
+  const origKey = process.env.INTEGRATION_ENCRYPTION_KEY;
+
+  process.env.LINEAR_CLIENT_ID = 'test_linear_client_id_123';
+  process.env.LINEAR_CLIENT_SECRET = 'test_linear_client_secret_456';
+  process.env.INTEGRATION_ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
+
+  try {
+    const { url, state, redirectUri } = linearService.buildAuthorizeUrl({
+      workspaceId: 'ws_moonshot',
+      userId: 'usr_pm_lead',
+      redirectUri: 'http://127.0.0.1:5173/'
+    });
+
+    assert.ok(url);
+    assert.ok(state);
+    assert.equal(redirectUri, 'http://127.0.0.1:5173/');
+
+    const parsed = new URL(url);
+    assert.equal(parsed.origin, 'https://linear.app');
+    assert.equal(parsed.pathname, '/oauth/authorize');
+    assert.equal(parsed.searchParams.get('client_id'), 'test_linear_client_id_123');
+    assert.equal(parsed.searchParams.get('redirect_uri'), 'http://127.0.0.1:5173/');
+    assert.equal(parsed.searchParams.get('response_type'), 'code');
+    assert.equal(parsed.searchParams.get('code_challenge_method'), 'S256');
+
+    // Strict actor check: actor must be 'user', NEVER deprecated 'application'
+    assert.equal(parsed.searchParams.get('actor'), 'user', 'Must use actor=user for standard user-level integration');
+    assert.notEqual(parsed.searchParams.get('actor'), 'application', 'Must not use deprecated actor=application');
+    assert.equal(url.includes('actor=application'), false, 'URL must not contain actor=application');
+  } finally {
+    if (origId) process.env.LINEAR_CLIENT_ID = origId; else delete process.env.LINEAR_CLIENT_ID;
+    if (origSecret) process.env.LINEAR_CLIENT_SECRET = origSecret; else delete process.env.LINEAR_CLIENT_SECRET;
+    if (origKey) process.env.INTEGRATION_ENCRYPTION_KEY = origKey; else delete process.env.INTEGRATION_ENCRYPTION_KEY;
+  }
+});
+
+test('ERROR SANITIZATION: Redacts sensitive parameters from OAuth error messages', () => {
+  const secretKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const rawMsg = `Linear token exchange failed: invalid client_secret=my_secret_12345 with code=auth_code_xyz and key=${secretKey} Bearer eyJhbGciOi...`;
+  const sanitized = linearService.sanitizeErrorMessage(rawMsg);
+
+  assert.equal(sanitized.includes('my_secret_12345'), false, 'client_secret value must be redacted');
+  assert.equal(sanitized.includes('auth_code_xyz'), false, 'code value must be redacted');
+  assert.equal(sanitized.includes(secretKey), false, '64-hex encryption key must be redacted');
+  assert.ok(sanitized.includes('[REDACTED]'), 'Redaction placeholder must be present');
+});
+
 test('PERSISTENCE: Stores encrypted integration connection and sanitizes frontend view', () => {
   const testDbPath = path.join(os.tmpdir(), `test_linear_${Date.now()}_${Math.random().toString(36).substring(2)}.db`);
   const testDb = new PMPilotDatabase(testDbPath);

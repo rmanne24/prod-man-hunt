@@ -189,6 +189,18 @@ class LinearService {
   }
 
   /**
+   * Sanitizes error messages to protect sensitive authorization codes, client secrets, and keys
+   */
+  sanitizeErrorMessage(msg) {
+    if (!msg || typeof msg !== 'string') return 'An unknown error occurred during Linear OAuth processing.';
+    return msg
+      .replace(/(client_secret|client_id|access_token|refresh_token|code|key|state)=([^&\s]+)/gi, '$1=[REDACTED]')
+      .replace(/[0-9a-fA-F]{64}/g, '[REDACTED_KEY]')
+      .replace(/Bearer\s+[a-zA-Z0-9_\-\.]+/gi, 'Bearer [REDACTED]')
+      .trim();
+  }
+
+  /**
    * Builds the official Linear OAuth authorization URL
    */
   buildAuthorizeUrl({ workspaceId, userId, redirectUri }) {
@@ -203,13 +215,14 @@ class LinearService {
     const clientId = this.getClientId();
     const { state, codeChallenge } = this.createOAuthState({ workspaceId, userId, redirectUri });
 
+    // Linear requires actor=user for standard user-level integration (actor=application is deprecated)
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,
       redirect_uri: redirectUri,
       state,
       scope: 'read,write,issues:create',
-      actor: 'application',
+      actor: 'user',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256'
     });
@@ -263,7 +276,8 @@ class LinearService {
         const parsed = JSON.parse(errText);
         msg = parsed.error_description || parsed.error || errText;
       } catch (_) {}
-      throw new Error(`Linear token exchange failed: ${msg}`);
+      const safeMsg = this.sanitizeErrorMessage(msg);
+      throw new Error(`Linear token exchange failed: ${safeMsg}`);
     }
 
     const tokenData = await tokenRes.json();
