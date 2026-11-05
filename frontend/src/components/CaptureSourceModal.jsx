@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Globe, Plus, FileText, Check } from 'lucide-react';
 
-export default function CaptureSourceModal({ isOpen, onClose, onSourceAdded }) {
+export default function CaptureSourceModal({ isOpen, onClose, onSourceAdded, decisionId = 'session_moonshot_checkout', getAuthHeaders }) {
   const [sourceName, setSourceName] = useState('');
   const [sourceType, setSourceType] = useState('Figma');
   const [url, setUrl] = useState('');
@@ -15,22 +15,21 @@ export default function CaptureSourceModal({ isOpen, onClose, onSourceAdded }) {
     if (!sourceName.trim()) return;
 
     setIsSaving(true);
+    const headers = getAuthHeaders ? getAuthHeaders() : { 'Content-Type': 'application/json' };
     try {
-      const res = await fetch('http://localhost:4000/api/session/session_moonshot_checkout/action', {
+      const res = await fetch(`http://localhost:4000/api/decisions/${decisionId}/signals`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          action: 'capture_evidence',
-          payload: {
-            sourceName,
-            sourceType,
-            url: url || 'https://browser.tab/context',
-            content
-          }
+          source: sourceName.trim(),
+          sourceType,
+          rawText: content.trim() || sourceName.trim(),
+          url: url || 'https://browser.tab/context',
+          capturedBy: 'PM Team'
         })
       });
       const data = await res.json();
-      if (onSourceAdded) onSourceAdded(data.session?.capturedSources);
+      if (onSourceAdded) onSourceAdded(data.decision?.signals || data.session?.capturedSources);
       onClose();
     } catch (err) {
       onClose();

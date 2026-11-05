@@ -28,6 +28,23 @@ export function AuthProvider({ children }) {
   const [authConfig, setAuthConfig] = useState(null);
   const [authError, setAuthError] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
+  const [activeWorkspace, setActiveWorkspaceState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pmpilot_active_workspace');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const setActiveWorkspace = useCallback((ws) => {
+    setActiveWorkspaceState(ws);
+    if (ws) {
+      localStorage.setItem('pmpilot_active_workspace', JSON.stringify(ws));
+    } else {
+      localStorage.removeItem('pmpilot_active_workspace');
+    }
+  }, []);
 
   // Fetch provider configuration from backend
   const fetchAuthConfig = useCallback(async () => {
@@ -44,7 +61,7 @@ export function AuthProvider({ children }) {
 
   // Fetch workspaces for authenticated user
   const fetchWorkspaces = useCallback(async (currentToken) => {
-    if (!currentToken) return;
+    if (!currentToken) return [];
     try {
       const res = await fetch('http://localhost:4000/api/workspaces', {
         headers: { 'Authorization': `Bearer ${currentToken}` }
@@ -53,11 +70,24 @@ export function AuthProvider({ children }) {
         const data = await res.json();
         if (data.success && data.workspaces) {
           setWorkspaces(data.workspaces);
+          // If no active workspace or active workspace is not in user's list, select first
+          setActiveWorkspaceState((prev) => {
+            if (prev && data.workspaces.some(w => w.id === prev.id)) {
+              return prev;
+            }
+            const fallback = data.workspaces[0] || null;
+            if (fallback) {
+              localStorage.setItem('pmpilot_active_workspace', JSON.stringify(fallback));
+            }
+            return fallback;
+          });
+          return data.workspaces;
         }
       }
     } catch (err) {
       console.warn('Could not fetch user workspaces:', err.message);
     }
+    return [];
   }, []);
 
   // Validate existing stored token on mount
@@ -206,21 +236,28 @@ export function AuthProvider({ children }) {
       setToken(data.token);
       setUser(data.user);
       setIsDemoMode(false);
-      fetchWorkspaces(data.token);
-      return { success: true, user: data.user };
+      if (data.workspace) {
+        setActiveWorkspace(data.workspace);
+      }
+      if (data.workspaces) {
+        setWorkspaces(data.workspaces);
+      } else {
+        fetchWorkspaces(data.token);
+      }
+      return { success: true, user: data.user, workspace: data.workspace };
     } catch (err) {
       setAuthError(err.message);
       throw err;
     }
   };
 
-  const register = async (email, password, name) => {
+  const register = async (email, password, name, workspaceName) => {
     setAuthError(null);
     try {
       const res = await fetch('http://localhost:4000/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name })
+        body: JSON.stringify({ email, password, name, workspaceName })
       });
 
       const data = await res.json();
@@ -233,8 +270,39 @@ export function AuthProvider({ children }) {
       setToken(data.token);
       setUser(data.user);
       setIsDemoMode(false);
-      fetchWorkspaces(data.token);
-      return { success: true, user: data.user };
+      if (data.workspace) {
+        setActiveWorkspace(data.workspace);
+      }
+      if (data.workspaces) {
+        setWorkspaces(data.workspaces);
+      } else {
+        fetchWorkspaces(data.token);
+      }
+      return { success: true, user: data.user, workspace: data.workspace };
+    } catch (err) {
+      setAuthError(err.message);
+      throw err;
+    }
+  };
+
+  const createWorkspace = async (name) => {
+    if (!token) return null;
+    try {
+      const res = await fetch('http://localhost:4000/api/workspaces', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ name })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create workspace.');
+      }
+      setWorkspaces(prev => [...prev, data.workspace]);
+      setActiveWorkspace(data.workspace);
+      return data.workspace;
     } catch (err) {
       setAuthError(err.message);
       throw err;
@@ -256,26 +324,34 @@ export function AuthProvider({ children }) {
     } finally {
       localStorage.removeItem('pmpilot_token');
       localStorage.removeItem('pmpilot_demo_active');
+      localStorage.removeItem('pmpilot_active_workspace');
       setToken(null);
       setUser(null);
       setIsDemoMode(false);
       setAuthError(null);
       setWorkspaces([]);
+      setActiveWorkspaceState(null);
     }
   };
 
   const enterDemoMode = () => {
     localStorage.removeItem('pmpilot_token');
     localStorage.setItem('pmpilot_demo_active', 'true');
+    const demoWs = { id: 'ws_moonshot', name: 'Moonshot Commerce [DEMO]', member_role: 'VIEWER' };
+    localStorage.setItem('pmpilot_active_workspace', JSON.stringify(demoWs));
     setToken(null);
     setUser(null);
     setIsDemoMode(true);
+    setActiveWorkspaceState(demoWs);
+    setWorkspaces([demoWs]);
     setAuthError(null);
   };
 
   const exitDemoMode = () => {
     localStorage.removeItem('pmpilot_demo_active');
+    localStorage.removeItem('pmpilot_active_workspace');
     setIsDemoMode(false);
+    setActiveWorkspaceState(null);
   };
 
   return (
@@ -290,6 +366,9 @@ export function AuthProvider({ children }) {
         authError,
         setAuthError,
         workspaces,
+        activeWorkspace,
+        setActiveWorkspace,
+        createWorkspace,
         login,
         register,
         loginWithAuth0,

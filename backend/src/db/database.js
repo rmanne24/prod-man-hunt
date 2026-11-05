@@ -251,8 +251,9 @@ export class PMPilotDatabase {
         updated_at = excluded.updated_at
     `);
     this.stmtListDecisionsForWorkspace = this.db.prepare(`
-      SELECT id, workspace_id, version, state, created_at, updated_at FROM decisions WHERE workspace_id = ?
+      SELECT id, workspace_id, version, state, data, created_at, updated_at FROM decisions WHERE workspace_id = ? ORDER BY updated_at DESC
     `);
+    this.stmtDeleteDecision = this.db.prepare('DELETE FROM decisions WHERE id = ? AND workspace_id = ?');
 
     // Integration Connections
     this.stmtGetIntegrationConnection = this.db.prepare(
@@ -527,6 +528,12 @@ export class PMPilotDatabase {
 
   listDecisionsForWorkspace(workspaceId) {
     return this.stmtListDecisionsForWorkspace.all(workspaceId) || [];
+  }
+
+  deleteDecision(id, workspaceId) {
+    if (!id || !workspaceId) return false;
+    const result = this.stmtDeleteDecision.run(id, workspaceId);
+    return result.changes > 0;
   }
 
   // --- Integration Connections Repository Methods ---

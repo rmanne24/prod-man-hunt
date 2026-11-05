@@ -21,6 +21,7 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState(null);
   const [showAuth0Setup, setShowAuth0Setup] = useState(false);
@@ -47,7 +48,7 @@ export default function AuthScreen() {
       if (mode === 'login') {
         await login(email.trim(), password);
       } else {
-        await register(email.trim(), password, name.trim());
+        await register(email.trim(), password, name.trim(), workspaceName.trim());
       }
     } catch (err) {
       setLocalError(err.message || 'Authentication failed. Please check your credentials.');
@@ -277,36 +278,67 @@ export default function AuthScreen() {
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {mode === 'register' && (
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: '#334155',
-                  marginBottom: '6px'
-                }}>
-                  Full Name
-                </label>
-                <div style={{ position: 'relative' }}>
+              <>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#334155',
+                    marginBottom: '6px'
+                  }}>
+                    Full Name
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Sarah Connor"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px 10px 36px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '13.5px',
+                        outline: 'none',
+                        background: '#ffffff',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#334155',
+                    marginBottom: '6px'
+                  }}>
+                    Organization / Workspace Name <span style={{ fontWeight: 400, color: '#64748b' }}>(Optional)</span>
+                  </label>
                   <input
                     type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Sarah Connor"
+                    value={workspaceName}
+                    onChange={(e) => setWorkspaceName(e.target.value)}
+                    placeholder="e.g. Acme Product Team"
                     style={{
                       width: '100%',
-                      padding: '10px 12px 10px 36px',
+                      padding: '10px 12px',
                       borderRadius: '8px',
                       border: '1px solid #cbd5e1',
                       fontSize: '13.5px',
                       outline: 'none',
-                      background: '#ffffff'
+                      background: '#ffffff',
+                      boxSizing: 'border-box'
                     }}
                   />
-                  <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                 </div>
-              </div>
+              </>
             )}
 
             <div>
@@ -401,75 +433,27 @@ export default function AuthScreen() {
             </button>
           </form>
 
-          {/* Quick Credential Fill for Evaluators */}
+          {/* Demo Sandbox Quick Access */}
           <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
             <button
               type="button"
-              onClick={handleQuickFillSeededPM}
+              onClick={enterDemoMode}
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#475569',
+                color: '#64748b',
                 fontSize: '12px',
-                fontWeight: 600,
+                fontWeight: 500,
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px'
               }}
             >
-              <KeyRound size={13} />
-              <span>Use default demo PM account (<code>pm@pmpilot.ai</code>)</span>
+              <Sparkles size={13} color="#2563eb" />
+              <span>Looking for the interactive demo sandbox? <strong style={{ color: '#0f172a' }}>Explore Walkthrough</strong></span>
             </button>
           </div>
-        </div>
-
-        {/* Judge Demo Walkthrough Bypass */}
-        <div style={{
-          background: '#f8fafc',
-          borderTop: '1px solid #e2e8f0',
-          padding: '16px 24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Evaluating for hackathon judging?
-            </span>
-            <span style={{
-              fontSize: '10px',
-              fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: '4px',
-              background: '#e0f2fe',
-              color: '#0369a1',
-              border: '1px solid #bae6fd'
-            }}>
-              JUDGE DEMO
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={enterDemoMode}
-            style={{
-              padding: '9px 14px',
-              borderRadius: '6px',
-              background: '#ffffff',
-              border: '1px solid #cbd5e1',
-              color: '#0f172a',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px'
-            }}
-          >
-            <Sparkles size={14} color="#0f172a" />
-            <span>Explore Demo Walkthrough (No Sign-in Required)</span>
-          </button>
         </div>
       </div>
 

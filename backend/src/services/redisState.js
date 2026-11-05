@@ -7,6 +7,7 @@
  */
 
 import {
+  createDecisionRecord,
   createSyntheticDemoDecision,
   createSignal
 } from '../domain/decisionModel.js';
@@ -140,6 +141,67 @@ export const RedisStateManager = {
     seed.workspaceId = 'ws_moonshot';
     db.saveDecision(seed.id, 'ws_moonshot', seed.version, seed.status, seed);
     memoryStore.set(seed.id, seed);
+  },
+
+  /**
+   * Dynamically creates a new decision for a workspace
+   */
+  async createDecision({ workspaceId, title, productArea, problemStatement, hypothesis, createdBy }) {
+    const decision = createDecisionRecord({
+      workspace: workspaceId,
+      title: title || 'Untitled Decision',
+      productArea: productArea || 'Core Product',
+      problemStatement: typeof problemStatement === 'string'
+        ? { underlyingProblem: problemStatement }
+        : (problemStatement || {})
+    });
+    if (hypothesis) {
+      decision.hypothesis = hypothesis;
+    }
+    decision.workspaceId = workspaceId;
+    decision.createdBy = createdBy || 'User';
+
+    memoryStore.set(decision.id, decision);
+    db.saveDecision(decision.id, workspaceId, decision.version, decision.status, decision);
+
+    return adaptDecisionToSession(decision);
+  },
+
+  /**
+   * Lists decision summaries for a given workspace
+   */
+  async listDecisions(workspaceId) {
+    if (!workspaceId) return [];
+    const rows = db.listDecisionsForWorkspace(workspaceId);
+    return rows.map(row => {
+      let data = {};
+      try {
+        data = JSON.parse(row.data);
+      } catch (_) {}
+
+      return {
+        id: row.id,
+        workspaceId: row.workspace_id,
+        version: row.version,
+        status: row.state,
+        title: data.title || row.id,
+        productArea: data.productArea || 'Core Product',
+        problemStatement: data.problemStatement?.underlyingProblem || data.problemStatement?.surfaceRequest || '',
+        signalsCount: data.signals?.length || 0,
+        conflictsCount: data.conflicts?.filter(c => c.status === 'OPEN')?.length || 0,
+        approvalStatus: data.approvalRecord?.status || 'PENDING',
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
+    });
+  },
+
+  /**
+   * Deletes a decision
+   */
+  async deleteDecision(decisionId, workspaceId) {
+    memoryStore.delete(decisionId);
+    return db.deleteDecision(decisionId, workspaceId);
   },
 
   /**

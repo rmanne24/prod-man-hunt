@@ -12,16 +12,130 @@ import {
   ExternalLink
 } from 'lucide-react';
 
-export default function OverviewView({ session, onNavigateToDecision }) {
+export default function OverviewView({ session, onNavigateToDecision, onNewDecisionClick, activeWorkspace }) {
+  const wsName = activeWorkspace?.name || 'Workspace';
+
+  if (!session) {
+    return (
+      <div style={{ padding: '32px 40px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
+        <div style={{ marginBottom: '28px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+            Portfolio Dashboard · {wsName}
+          </div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+            Decision Health & Pipeline Overview
+          </h1>
+          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '6px', marginBottom: 0 }}>
+            Executive tracking of evidence-grounded product decisions, unresolved contradictions, and human approval gates.
+          </p>
+        </div>
+
+        <div style={{
+          background: '#ffffff',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          padding: '48px 32px',
+          textAlign: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: '#eff6ff',
+            color: '#2563eb',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '16px'
+          }}>
+            <ShieldCheck size={24} />
+          </div>
+          <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0' }}>
+            Welcome to PMPilot in {wsName}
+          </h2>
+          <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '520px', margin: '0 auto 28px auto', lineHeight: 1.5 }}>
+            PMPilot turns conversational feedback, customer research, and user stories into structured, evidence-grounded product decisions protected by explicit human approval.
+          </p>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '16px',
+            maxWidth: '900px',
+            margin: '0 auto 32px auto',
+            textAlign: 'left'
+          }}>
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                1. Ingestion
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+                Capture raw user signals, telemetry insights, and research excerpts.
+              </div>
+            </div>
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                2. Contradiction Detection
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+                Identify conflicting user demands before engineering commitment.
+              </div>
+            </div>
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                3. Human Approval Gate
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+                Cryptographically bound sign-off required before downstream delivery.
+              </div>
+            </div>
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                4. Switch & Linear Delivery
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+                Collaborate in Switch AI rooms and export sprint-ready Linear issues.
+              </div>
+            </div>
+          </div>
+
+          {onNewDecisionClick && (
+            <button
+              onClick={onNewDecisionClick}
+              style={{
+                padding: '11px 24px',
+                borderRadius: '8px',
+                background: '#0f172a',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.06)'
+              }}
+            >
+              <span>Create Your First Decision</span>
+              <ArrowRight size={15} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const {
-    title = "[SYNTHETIC DEMO] One-Click Guest Checkout & Cart Recovery",
+    title = "Product Decision",
     version = 1,
-    status = "CONFLICT_REVIEW",
+    status = "DRAFT",
     decisionHealth = {},
     conflicts = [],
     capturedSources = [],
     approvalRecord = {}
-  } = session || {};
+  } = session;
 
   const openConflicts = conflicts.filter(c => c.status === 'OPEN').length;
   const isApproved = status === 'APPROVED' || approvalRecord?.status === 'APPROVED';
@@ -40,7 +154,7 @@ export default function OverviewView({ session, onNavigateToDecision }) {
       <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-            Portfolio Dashboard · Moonshot Studio
+            Portfolio Dashboard · {wsName}
           </div>
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
             Decision Health & Pipeline Overview
@@ -60,7 +174,7 @@ export default function OverviewView({ session, onNavigateToDecision }) {
             color: '#475569',
             border: '1px solid #e2e8f0'
           }}>
-            Workspace: Moonshot Studio [DEMO]
+            Workspace: {wsName}
           </span>
           <span style={{
             fontSize: '11px',

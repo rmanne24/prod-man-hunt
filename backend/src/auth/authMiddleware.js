@@ -128,8 +128,8 @@ export function requireWorkspaceMember(req, res, next) {
   // Determine target workspace ID
   let targetWorkspaceId = req.params.workspaceId || req.headers['x-workspace-id'] || req.query.workspaceId;
 
-  // If a decision ID is in the route parameter, check the decision's workspace
-  const decisionParam = req.params.decisionId || req.params.id;
+  // If a decision or session ID is in the route parameter, check its workspace
+  const decisionParam = req.params.decisionId || req.params.id || req.params.sessionId;
   if (decisionParam) {
     const meta = db.getDecisionMeta(decisionParam);
     if (meta) {
@@ -139,17 +139,24 @@ export function requireWorkspaceMember(req, res, next) {
     }
   }
 
-  // Default to moonshot workspace if not specified
+  // If not explicitly provided, fall back to user's assigned workspace from token
+  if (!targetWorkspaceId && req.user && req.user.workspaceId) {
+    targetWorkspaceId = req.user.workspaceId;
+  }
+
+  // If still not set, default to 'ws_moonshot' (public demo workspace)
   if (!targetWorkspaceId) {
     targetWorkspaceId = 'ws_moonshot';
   }
 
-  // Demo users have access strictly to the public demo workspace ('ws_moonshot')
+  // For the public evaluation demo workspace ('ws_moonshot'), allow demo walkthroughs
+  if (targetWorkspaceId === 'ws_moonshot') {
+    req.workspaceId = targetWorkspaceId;
+    return next();
+  }
+
+  // Demo users are strictly confined to 'ws_moonshot'
   if (req.user && req.user.isDemo) {
-    if (targetWorkspaceId === 'ws_moonshot') {
-      req.workspaceId = targetWorkspaceId;
-      return next();
-    }
     return res.status(403).json({
       success: false,
       error: `Demo mode is restricted to 'ws_moonshot'. Access to workspace '${targetWorkspaceId}' requires a verified account.`,
@@ -157,17 +164,21 @@ export function requireWorkspaceMember(req, res, next) {
     });
   }
 
-  // If unauthenticated
+  // Unauthenticated requests to private workspaces are rejected
   if (!req.user) {
-    // For the public synthetic demo workspace ('ws_moonshot'), allow demo evaluation walkthroughs
-    if (targetWorkspaceId === 'ws_moonshot') {
-      req.workspaceId = targetWorkspaceId;
-      return next();
-    }
     return res.status(401).json({
       success: false,
       error: 'Authentication required to access workspace data.',
       code: 'UNAUTHORIZED'
+    });
+  }
+
+  // If still no targetWorkspaceId, error
+  if (!targetWorkspaceId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Workspace ID could not be determined.',
+      code: 'MISSING_WORKSPACE_ID'
     });
   }
 

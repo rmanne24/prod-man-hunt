@@ -24,14 +24,68 @@ export default function EvidenceWorkspace({
   onGenerateDecisionPack,
   onApprovalAction,
   onReopenDecision,
-  isSubmittingApproval = false
+  isSubmittingApproval = false,
+  onNewDecisionClick
 }) {
   const [activeTab, setActiveTab] = useState('evidence');
 
+  if (!session) {
+    return (
+      <div style={{
+        flex: 1,
+        padding: '80px 32px',
+        maxWidth: '720px',
+        margin: '0 auto',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          width: '56px',
+          height: '56px',
+          borderRadius: '16px',
+          background: '#f1f5f9',
+          color: '#64748b',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '20px'
+        }}>
+          <FileText size={28} />
+        </div>
+        <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0' }}>
+          No Active Decision Selected
+        </h2>
+        <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 24px 0', lineHeight: 1.5 }}>
+          Create a new product decision record or select one from the directory to examine evidence, resolve contradictions, and request human approval.
+        </p>
+        {onNewDecisionClick && (
+          <button
+            onClick={onNewDecisionClick}
+            style={{
+              padding: '10px 20px',
+              borderRadius: '8px',
+              background: '#0f172a',
+              border: 'none',
+              color: '#ffffff',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Plus size={16} />
+            <span>Create New Decision</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const {
-    id = 'session_moonshot_checkout',
-    title = '[SYNTHETIC DEMO] One-Click Guest Checkout & Cart Recovery',
-    status = 'CONFLICT_REVIEW',
+    id = 'dec_active',
+    title = 'Untitled Product Decision',
+    status = 'DRAFT',
     version = 1,
     problemStatement = {},
     candidateOptions = [],
@@ -42,7 +96,7 @@ export default function EvidenceWorkspace({
     featureMatrix = [],
     decisionMemory = [],
     activityLog = []
-  } = session || {};
+  } = session;
 
   const isApproved = (status === 'APPROVED' || status === 'ARTIFACT_GENERATED') && approvalRecord?.status === 'APPROVED';
   const hasBlockingConflicts = conflicts.some(c => c.status === 'OPEN' && c.severity === 'BLOCKING');

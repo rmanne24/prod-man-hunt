@@ -8,12 +8,14 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import crypto from "node:crypto";
 import { RedisStateManager } from "./services/redisState.js";
 import { ExaResearchEngine } from "./services/exa.js";
 import { MozillaTrustEngine } from "./services/mozillaTrust.js";
 import { TriggerJobRunner } from "./jobs/triggerJobs.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 import { AgentOrchestrator } from "./agents/orchestrator.js";
 import { CrossSurfaceHub } from "./services/crossSurfaceHub.js";
 import { StateTransitionError } from "./domain/stateMachine.js";
@@ -21,6 +23,7 @@ import { authService } from "./auth/authService.js";
 import { oidcService } from "./auth/oidcService.js";
 import { db } from "./db/database.js";
 import { authenticateToken, requireAuth, requireRealUser, requireWorkspaceMember } from "./auth/authMiddleware.js";
+import { createRateLimiter } from "./auth/rateLimiter.js";
 import { linearService } from "./integrations/linearService.js";
 import { switchService } from "./integrations/switchService.js";
 
@@ -30,9 +33,27 @@ dotenv.config({ path: path.resolve(__serverDir, "../.env") });
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors({ origin: "*" }));
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
+  : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4000', 'http://127.0.0.1:4000'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS error: Origin ${origin} not allowed.`));
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: "15mb" }));
 app.use(authenticateToken);
+
+const authLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: "Too many authentication attempts. Please try again after 60 seconds."
+});
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -56,10 +77,10 @@ app.get("/api/auth/config", (req, res) => {
 });
 
 // Create new user account
-app.post("/api/auth/register", (req, res) => {
+app.post("/api/auth/register", authLimiter, (req, res) => {
   try {
-    const { email, password, name } = req.body;
-    const result = authService.registerUser({ email, password, name });
+    const { email, password, name, workspaceName } = req.body;
+    const result = authService.registerUser({ email, password, name, workspaceName });
     res.status(201).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -67,7 +88,7 @@ app.post("/api/auth/register", (req, res) => {
 });
 
 // Sign in with credentials
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", authLimiter, (req, res) => {
   try {
     const { email, password } = req.body;
     const result = authService.loginUser({ email, password });
@@ -154,8 +175,77 @@ app.get("/api/workspaces", requireAuth, (req, res) => {
       workspaces: [{ id: 'ws_moonshot', name: 'Moonshot Commerce Workspace', member_role: 'VIEWER' }]
     });
   }
-  const workspaces = db.getUserWorkspaces(req.user.id);
+  let workspaces = db.getUserWorkspaces(req.user.id);
+  if (workspaces.length === 0) {
+    const wsId = `ws_${crypto.randomBytes(6).toString('hex')}`;
+    const wsName = `${req.user.name || 'Personal'}'s Workspace`;
+    db.createWorkspace({ id: wsId, name: wsName, createdBy: req.user.id });
+    workspaces = db.getUserWorkspaces(req.user.id);
+  }
   res.json({ success: true, workspaces });
+});
+
+// Create a new workspace (Protected by requireRealUser)
+app.post("/api/workspaces", requireRealUser, (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, error: "Workspace name is required." });
+    }
+    const cleanName = name.trim();
+    const wsId = `ws_${crypto.randomBytes(6).toString('hex')}`;
+    const workspace = db.createWorkspace({
+      id: wsId,
+      name: cleanName,
+      createdBy: req.user.id
+    });
+    res.status(201).json({ success: true, workspace: { ...workspace, member_role: 'OWNER' } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// List decisions for a workspace (Guarded by workspace authorization)
+app.get("/api/workspaces/:workspaceId/decisions", requireWorkspaceMember, async (req, res) => {
+  try {
+    const decisions = await RedisStateManager.listDecisions(req.params.workspaceId);
+    res.json({ success: true, decisions });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Create a new decision in workspace (Guarded by workspace authorization)
+app.post("/api/workspaces/:workspaceId/decisions", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { title, productArea, problemStatement, hypothesis } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, error: "Decision title is required." });
+    }
+
+    const decision = await RedisStateManager.createDecision({
+      workspaceId: req.params.workspaceId,
+      title: title.trim(),
+      productArea: productArea || 'Core Product',
+      problemStatement,
+      hypothesis,
+      createdBy: req.user && !req.user.isDemo ? req.user.name : 'Human PM'
+    });
+
+    res.status(201).json({ success: true, decision });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete a decision in workspace (Guarded by workspace authorization)
+app.delete("/api/workspaces/:workspaceId/decisions/:decisionId", requireWorkspaceMember, async (req, res) => {
+  try {
+    const deleted = await RedisStateManager.deleteDecision(req.params.decisionId, req.params.workspaceId);
+    res.json({ success: true, deleted });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 /* ------------------- CANONICAL DECISION ROUTES ------------------- */
@@ -288,7 +378,21 @@ app.post("/api/decisions/:id/artifacts", requireWorkspaceMember, async (req, res
 // Legacy session fetch (Guarded by workspace authorization)
 app.get("/api/session/:sessionId?", requireWorkspaceMember, async (req, res) => {
   try {
-    const sessionId = req.params.sessionId || "session_moonshot_checkout";
+    let sessionId = req.params.sessionId;
+    if (!sessionId) {
+      if (req.user?.isDemo) {
+        sessionId = "session_moonshot_checkout";
+      } else if (req.workspaceId) {
+        const wsDecisions = await RedisStateManager.listDecisions(req.workspaceId);
+        if (wsDecisions && wsDecisions.length > 0) {
+          sessionId = wsDecisions[0].id;
+        } else {
+          return res.json({ success: true, session: null });
+        }
+      } else {
+        sessionId = "session_moonshot_checkout";
+      }
+    }
     const session = await RedisStateManager.getSession(sessionId);
     res.json({ success: true, session });
   } catch (err) {
@@ -778,6 +882,16 @@ app.post("/api/hub/settings/keys", (req, res) => {
   const result = CrossSurfaceHub.updateApiKeys(keys);
   res.json(result);
 });
+
+// Production static frontend serving (serves Vite build when available)
+const staticDistPath = path.resolve(__serverDir, "../../frontend/dist");
+if (fs.existsSync(staticDistPath)) {
+  app.use(express.static(staticDistPath));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) return next();
+    res.sendFile(path.join(staticDistPath, "index.html"));
+  });
+}
 
 export async function runStartupPreflight() {
   const preflight = linearService.getPreflightReport();

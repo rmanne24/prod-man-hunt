@@ -81,17 +81,18 @@ class AuthService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
-  generateToken(user, expiresInMs = TOKEN_TTL_MS) {
+  generateToken(user, expiresInMs = TOKEN_TTL_MS, targetWorkspaceId = null) {
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
     const now = Date.now();
     const exp = now + expiresInMs;
+    const wsId = targetWorkspaceId || user.workspaceId || null;
     const payload = {
       sub: user.id,
       email: user.email,
       name: user.name,
       role: user.role || 'PRODUCT_MANAGER',
       provider: user.provider || 'LOCAL',
-      workspaceId: 'ws_moonshot',
+      workspaceId: wsId,
       iat: Math.floor(now / 1000),
       exp: Math.floor(exp / 1000)
     };
@@ -149,11 +150,11 @@ class AuthService {
       name: user.name,
       role: user.role,
       provider: user.provider,
-      workspaceId: payload.workspaceId || 'ws_moonshot'
+      workspaceId: payload.workspaceId || null
     };
   }
 
-  registerUser({ email, password, name }) {
+  registerUser({ email, password, name, workspaceName }) {
     if (!email || !email.includes('@')) {
       throw new Error('A valid email address is required.');
     }
@@ -183,10 +184,18 @@ class AuthService {
       passwordSalt: salt
     });
 
-    // Add to default workspace
-    db.addWorkspaceMember('ws_moonshot', newUser.id, 'MEMBER');
+    // Provision dedicated personal workspace for new tenant
+    const cleanWsName = (workspaceName || `${cleanName}'s Workspace`).trim();
+    const wsId = `ws_${crypto.randomBytes(6).toString('hex')}`;
+    db.createWorkspace({
+      id: wsId,
+      name: cleanWsName,
+      createdBy: newUser.id
+    });
 
-    const token = this.generateToken(newUser);
+    const userWorkspaces = db.getUserWorkspaces(newUser.id);
+    const token = this.generateToken(newUser, TOKEN_TTL_MS, wsId);
+
     return {
       token,
       user: {
@@ -194,8 +203,15 @@ class AuthService {
         email: newUser.email,
         name: newUser.name,
         role: newUser.role,
-        provider: newUser.provider
-      }
+        provider: newUser.provider,
+        workspaceId: wsId
+      },
+      workspace: {
+        id: wsId,
+        name: cleanWsName,
+        member_role: 'OWNER'
+      },
+      workspaces: userWorkspaces
     };
   }
 
@@ -220,7 +236,19 @@ class AuthService {
       throw new Error('Invalid email or password.');
     }
 
-    const token = this.generateToken(user);
+    let userWorkspaces = db.getUserWorkspaces(user.id);
+    let activeWorkspace = userWorkspaces[0];
+
+    // If user has no workspace, provision one
+    if (!activeWorkspace) {
+      const wsId = `ws_${crypto.randomBytes(6).toString('hex')}`;
+      const wsName = `${user.name}'s Workspace`;
+      db.createWorkspace({ id: wsId, name: wsName, createdBy: user.id });
+      userWorkspaces = db.getUserWorkspaces(user.id);
+      activeWorkspace = userWorkspaces[0];
+    }
+
+    const token = this.generateToken(user, TOKEN_TTL_MS, activeWorkspace.id);
     return {
       token,
       user: {
@@ -228,8 +256,11 @@ class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
-        provider: user.provider
-      }
+        provider: user.provider,
+        workspaceId: activeWorkspace.id
+      },
+      workspace: activeWorkspace,
+      workspaces: userWorkspaces
     };
   }
 

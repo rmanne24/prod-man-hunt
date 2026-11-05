@@ -15,7 +15,7 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function SwitchCollaborationView({ session, onRefreshSession, _onNavigateTo }) {
-  const { token } = useAuth();
+  const { token, isDemoMode } = useAuth();
   const decisionId = session?.id || session?.sessionId || 'session_moonshot_checkout';
   const workspaceId = session?.workspaceId || 'ws_moonshot';
   const currentVersion = session?.version || 1;
@@ -47,9 +47,13 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
 
   const getHeaders = useCallback(() => {
     const headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else if (isDemoMode) {
+      headers['X-PMPilot-Demo'] = 'true';
+    }
     return headers;
-  }, [token]);
+  }, [token, isDemoMode]);
 
   // 1. Fetch Switch Preflight Health
   const fetchPreflight = useCallback(async () => {

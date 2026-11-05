@@ -8,11 +8,11 @@ export default function DecisionHealthHero({
   approvalRecord
 }) {
   const {
-    status = "Promising direction. Resolve two conflicts first.",
-    detail = "The guest-checkout decision is evidence-backed, but customer validation and scope clarity are still missing.",
-    confidence = 88,
-    conflictsCount = 2,
-    riskyAssumptionsCount = 1,
+    status = "Initial decision exploration. Awaiting signals and evidence.",
+    detail = "Recommendations require evidence grounding, uncertainty estimation, and explicit human sign-off.",
+    confidence = 50,
+    conflictsCount = 0,
+    riskyAssumptionsCount = 0,
     epistemicBreakdown
   } = health || {};
 

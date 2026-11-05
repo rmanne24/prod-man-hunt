@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  pmpilot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pmpilot:latest
+    container_name: pmpilot-app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - SWITCH_SERVER_URL=${SWITCH_SERVER_URL:-http://switch:8000}
+    volumes:
+      - pmpilot-data:/app/backend/data
+    depends_on:
+      - switch
+
+  switch:
+    image: ghcr.io/sandbox-quantum/switch:latest
+    container_name: pmpilot-switch-core
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - SWITCH_ENVIRONMENT=production
+      - SWITCH_PORT=8000
+    volumes:
+      - switch-data:/app/data
+
+volumes:
+  pmpilot-data:
+    driver: local
+  switch-data:
+    driver: local

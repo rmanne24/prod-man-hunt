@@ -12,6 +12,7 @@ import CaptureSourceModal from './components/CaptureSourceModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import OmniBar from './components/OmniBar.jsx';
 import AuthScreen from './components/AuthScreen.jsx';
+import NewDecisionModal from './components/NewDecisionModal.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Loader2, Sparkles, LogOut } from 'lucide-react';
 
@@ -168,9 +169,13 @@ const fallbackSession = {
 };
 
 function PMPilotWorkspace() {
-  const { user, token, isAuthenticated, isDemoMode, isLoading, logout, exitDemoMode } = useAuth();
-  const [activeNav, setActiveNav] = useState('decisions');
+  const { user, token, isAuthenticated, isDemoMode, isLoading, activeWorkspace, logout, exitDemoMode } = useAuth();
+  const [activeNav, setActiveNav] = useState('overview');
   const [session, setSession] = useState(null);
+  const [workspaceDecisions, setWorkspaceDecisions] = useState([]);
+  const [selectedDecisionId, setSelectedDecisionId] = useState(null);
+  const [isLoadingDecisions, setIsLoadingDecisions] = useState(false);
+  const [isNewDecisionModalOpen, setIsNewDecisionModalOpen] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGeneratingJob, setIsGeneratingJob] = useState(false);
@@ -186,32 +191,99 @@ function PMPilotWorkspace() {
     } else if (isDemoMode) {
       headers['X-PMPilot-Demo'] = 'true';
     }
+    if (activeWorkspace?.id) {
+      headers['X-Workspace-Id'] = activeWorkspace.id;
+    }
     return headers;
-  }, [token, isDemoMode]);
+  }, [token, isDemoMode, activeWorkspace]);
 
-  const fetchSession = useCallback(async () => {
+  // Load decisions list for current active workspace
+  const fetchWorkspaceDecisions = useCallback(async () => {
+    if (isDemoMode) {
+      setWorkspaceDecisions([{
+        id: 'session_moonshot_checkout',
+        title: 'One-Click Guest Checkout & Cart Recovery',
+        productArea: 'Core E-commerce',
+        version: 1,
+        status: 'CONFLICT_REVIEW',
+        signalsCount: 3,
+        conflictsCount: 1,
+        approvalStatus: 'PENDING'
+      }]);
+      return;
+    }
+
+    if (!activeWorkspace?.id || !token) return;
+
+    setIsLoadingDecisions(true);
     try {
-      const res = await fetch('http://localhost:4000/api/session', {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${activeWorkspace.id}/decisions`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.session) {
-          setSession(data.session);
+        if (data.success && data.decisions) {
+          setWorkspaceDecisions(data.decisions);
+          return data.decisions;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load workspace decisions:', err.message);
+    } finally {
+      setIsLoadingDecisions(false);
+    }
+    return [];
+  }, [activeWorkspace?.id, token, isDemoMode, getAuthHeaders]);
+
+  // Fetch full details of target decision
+  const fetchDecisionDetail = useCallback(async (targetId) => {
+    if (!targetId) {
+      setSession(null);
+      return;
+    }
+    try {
+      const res = await fetch(`http://localhost:4000/api/decisions/${targetId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.decision) {
+          setSession(data.decision);
           return;
         }
       }
     } catch (err) {
-      // Resilient fallback for local demo
+      console.warn('Error fetching decision detail:', err.message);
     }
-    setSession(fallbackSession);
-  }, [getAuthHeaders]);
 
-  useEffect(() => {
-    if (isAuthenticated || isDemoMode) {
-      fetchSession();
+    if (isDemoMode) {
+      setSession(fallbackSession);
     }
-  }, [fetchSession, isAuthenticated, isDemoMode]);
+  }, [getAuthHeaders, isDemoMode]);
+
+  // Sync workspace and decisions on activeWorkspace / auth changes
+  useEffect(() => {
+    if (!isAuthenticated && !isDemoMode) return;
+
+    if (isDemoMode) {
+      fetchDecisionDetail('session_moonshot_checkout');
+      return;
+    }
+
+    if (activeWorkspace?.id) {
+      fetchWorkspaceDecisions().then((decs) => {
+        if (decs && decs.length > 0) {
+          const currentId = selectedDecisionId && decs.some(d => d.id === selectedDecisionId)
+            ? selectedDecisionId
+            : decs[0].id;
+          setSelectedDecisionId(currentId);
+          fetchDecisionDetail(currentId);
+        } else {
+          setSession(null);
+        }
+      });
+    }
+  }, [isAuthenticated, isDemoMode, activeWorkspace?.id, fetchWorkspaceDecisions, fetchDecisionDetail, selectedDecisionId]);
 
   if (isLoading) {
     return (
@@ -238,95 +310,74 @@ function PMPilotWorkspace() {
     return <AuthScreen />;
   }
 
-  const activeSession = session || fallbackSession;
+  const handleSelectDecision = (decisionId) => {
+    setSelectedDecisionId(decisionId);
+    fetchDecisionDetail(decisionId);
+    setActiveNav('decisions');
+  };
 
   const handleResolveConflict = async (conflictId, choice) => {
+    const targetDecisionId = session?.id || 'session_moonshot_checkout';
     try {
-      const res = await fetch('http://localhost:4000/api/session/session_moonshot_checkout/action', {
+      const res = await fetch(`http://localhost:4000/api/decisions/${targetDecisionId}/conflicts/${conflictId}/resolve`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          action: 'resolve_conflict',
-          payload: {
-            conflictId,
-            resolution: choice,
-            expectedVersion: activeSession.version,
-            decidedBy: user?.name || 'Human PM [Demo UI]'
-          }
+          resolutionChoiceId: choice,
+          resolutionNotes: `Standardized to ${choice}`,
+          expectedVersion: session?.version,
+          decidedBy: user?.name ? `${user.name} (${user.email})` : 'Human PM [Demo UI]'
         })
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.session) {
-          setSession(data.session);
+        if (data.decision) {
+          setSession(data.decision);
+          fetchWorkspaceDecisions();
           return;
         }
       } else {
         const errData = await res.json().catch(() => ({}));
         alert(`Conflict resolution rejected by server: ${errData.error || res.statusText}`);
-        await fetchSession();
+        await fetchDecisionDetail(targetDecisionId);
         return;
       }
     } catch (err) {
       console.error('Conflict resolution network error:', err);
-      setSession(prev => {
-        const next = { ...prev };
-        const c = next.conflicts?.find(x => x.id === conflictId);
-        if (c) {
-          c.status = 'RESOLVED';
-          c.chosenResolution = choice;
-        }
-        next.version = (next.version || 1) + 1;
-        next.status = 'RECOMMENDATION_READY';
-        next.decisionHealth = {
-          ...next.decisionHealth,
-          conflictsCount: 0,
-          confidence: 96,
-          status: "Green-lit for delivery. All blocking contradictions resolved."
-        };
-        return next;
-      });
     }
   };
 
   const handleReopenDecision = async () => {
+    const targetDecisionId = session?.id || 'session_moonshot_checkout';
     try {
-      await fetch('http://localhost:4000/api/session/session_moonshot_checkout/action', {
+      await fetch(`http://localhost:4000/api/session/${targetDecisionId}/action`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           action: 'reopen_decision',
-          payload: { decidedBy: user?.name || 'Human PM [Demo UI]' }
+          payload: { decidedBy: user?.name ? `${user.name} (${user.email})` : 'Human PM [Demo UI]' }
         })
       });
-      await fetchSession();
+      await fetchDecisionDetail(targetDecisionId);
+      fetchWorkspaceDecisions();
     } catch (err) {
-      setSession(prev => ({
-        ...prev,
-        version: (prev.version || 1) + 1,
-        status: 'NEEDS_REVISION',
-        decisionHealth: {
-          ...prev.decisionHealth,
-          status: "Reopened decision: Limit comparison to three.",
-          confidence: 82
-        }
-      }));
+      console.error('Error reopening decision:', err);
     }
   };
 
   const handleApprovalAction = async (action, rationale = '', conditions = []) => {
     if (isSubmittingApproval) return;
     setIsSubmittingApproval(true);
-    const sessionId = activeSession.id || activeSession.sessionId || 'session_moonshot_checkout';
+    const targetDecisionId = session?.id || 'session_moonshot_checkout';
     const callerName = user?.name ? `${user.name} (${user.email})` : 'Human PM [Demo UI]';
 
     try {
-      const res = await fetch(`http://localhost:4000/api/decisions/${sessionId}/approval`, {
+      const res = await fetch(`http://localhost:4000/api/decisions/${targetDecisionId}/approval`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           action,
-          decisionVersion: Number(activeSession.version || 1),
+          decisionVersion: Number(session?.version || 1),
           rationale: rationale || `Human PM action: ${action}`,
           conditions: conditions || [],
           decidedBy: callerName
@@ -335,43 +386,21 @@ function PMPilotWorkspace() {
 
       const data = await res.json();
       if (res.ok && data.success) {
-        await fetchSession();
+        await fetchDecisionDetail(targetDecisionId);
+        fetchWorkspaceDecisions();
       } else {
         alert(`Approval action rejected: ${data.error || res.statusText}`);
-        await fetchSession();
+        await fetchDecisionDetail(targetDecisionId);
       }
     } catch (err) {
       console.error('Error submitting approval action:', err);
-      if (action === 'APPROVE') {
-        setSession(prev => ({
-          ...prev,
-          status: 'APPROVED',
-          approvalRecord: {
-            status: 'APPROVED',
-            approvedDecisionVersion: prev.version || 1,
-            decidedBy: callerName,
-            decidedAt: new Date().toISOString(),
-            rationale,
-            conditions
-          }
-        }));
-      } else if (action === 'REQUEST_REVISION') {
-        setSession(prev => ({
-          ...prev,
-          status: 'NEEDS_REVISION',
-          version: (prev.version || 1) + 1,
-          approvalRecord: {
-            status: 'NEEDS_REVISION',
-            invalidationReason: rationale || 'Human PM requested scope revision.'
-          }
-        }));
-      }
     } finally {
       setIsSubmittingApproval(false);
     }
   };
 
   const handleGenerateDecisionPack = async () => {
+    const targetDecisionId = session?.id || 'session_moonshot_checkout';
     setIsGeneratingJob(true);
     setJobProgress({ step: "Trigger.dev: Queued async job...", percent: 20 });
 
@@ -380,8 +409,8 @@ function PMPilotWorkspace() {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          sessionId: activeSession.id || 'session_moonshot_checkout',
-          targetDecisionVersion: activeSession.version
+          sessionId: targetDecisionId,
+          targetDecisionVersion: session?.version || 1
         })
       });
       const data = await res.json();
@@ -402,7 +431,7 @@ function PMPilotWorkspace() {
           setTimeout(() => {
             setIsGeneratingJob(false);
             setActiveNav('artifacts');
-            fetchSession();
+            fetchDecisionDetail(targetDecisionId);
           }, 800);
         } else {
           setJobProgress({ step: `Trigger.dev running agent pipeline (${pct}%)...`, percent: pct });
@@ -414,6 +443,8 @@ function PMPilotWorkspace() {
       alert(`Network error triggering artifact generation: ${err.message}`);
     }
   };
+
+  const currentWsName = activeWorkspace?.name || (isDemoMode ? 'Moonshot Commerce [DEMO]' : 'Workspace');
 
   return (
     <div style={{
@@ -427,10 +458,11 @@ function PMPilotWorkspace() {
       <LeftSidebar
         activeNav={activeNav}
         setActiveNav={setActiveNav}
-        sources={activeSession.capturedSources || []}
-        decisionCount={1}
+        sources={session?.signals || session?.capturedSources || []}
+        decisionCount={workspaceDecisions.length}
         onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onNewDecisionClick={() => setIsNewDecisionModalOpen(true)}
       />
 
       {/* 2. Main Workspace Layout */}
@@ -455,20 +487,26 @@ function PMPilotWorkspace() {
         }}>
           {/* Breadcrumbs */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span style={{ fontWeight: 600, color: '#0f172a' }}>Moonshot Studio</span>
+            <span style={{ fontWeight: 600, color: '#0f172a' }}>{currentWsName}</span>
             <span>/</span>
-            <span style={{ fontWeight: 500, color: '#334155' }}>AI CHECKOUT [SYNTHETIC DEMO]</span>
-            <span>/</span>
-            <span style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              padding: '2px 8px',
-              borderRadius: '4px',
-              background: '#f1f5f9',
-              color: '#334155'
-            }}>
-              Decision Engine v{activeSession.version || 1}
+            <span style={{ fontWeight: 500, color: '#334155' }}>
+              {session?.title || (workspaceDecisions.length === 0 ? 'Getting Started' : 'Decisions Directory')}
             </span>
+            {session && (
+              <>
+                <span>/</span>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  background: '#f1f5f9',
+                  color: '#334155'
+                }}>
+                  v{session.version || 1}
+                </span>
+              </>
+            )}
           </div>
 
           {/* Right Header Actions */}
@@ -539,11 +577,11 @@ function PMPilotWorkspace() {
                   fontWeight: 600,
                   padding: '3px 8px',
                   borderRadius: '4px',
-                  background: '#f8fafc',
-                  color: '#64748b',
-                  border: '1px solid #e2e8f0'
+                  background: '#fef3c7',
+                  color: '#b45309',
+                  border: '1px solid #fde68a'
                 }}>
-                  UNVERIFIED_DEMO_CLIENT [Judge Demo]
+                  DEMO EVALUATION MODE
                 </span>
                 <button
                   onClick={exitDemoMode}
@@ -580,33 +618,40 @@ function PMPilotWorkspace() {
           }}>
             {activeNav === 'overview' && (
               <OverviewView
-                session={activeSession}
+                session={session}
                 onNavigateToDecision={(dest) => setActiveNav(dest)}
+                onNewDecisionClick={() => setIsNewDecisionModalOpen(true)}
+                activeWorkspace={activeWorkspace}
               />
             )}
 
             {activeNav === 'projects' && (
               <ProjectsView
-                session={activeSession}
-                onNavigateToDecision={(dest) => setActiveNav(dest)}
+                decisions={workspaceDecisions}
+                session={session}
+                onSelectDecision={handleSelectDecision}
+                onNewDecisionClick={() => setIsNewDecisionModalOpen(true)}
+                activeWorkspace={activeWorkspace}
+                isLoading={isLoadingDecisions}
               />
             )}
 
             {activeNav === 'decisions' && (
               <EvidenceWorkspace
-                session={activeSession}
+                session={session}
                 onResolveConflict={handleResolveConflict}
                 onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
                 onGenerateDecisionPack={handleGenerateDecisionPack}
                 onApprovalAction={handleApprovalAction}
                 onReopenDecision={handleReopenDecision}
                 isSubmittingApproval={isSubmittingApproval}
+                onNewDecisionClick={() => setIsNewDecisionModalOpen(true)}
               />
             )}
 
             {activeNav === 'evidence' && (
               <EvidenceView
-                session={activeSession}
+                session={session}
                 onCaptureSourceClick={() => setIsCaptureModalOpen(true)}
                 onNavigateToDecision={(dest) => setActiveNav(dest)}
               />
@@ -618,8 +663,8 @@ function PMPilotWorkspace() {
 
             {activeNav === 'switch' && (
               <SwitchCollaborationView
-                session={activeSession}
-                onRefreshSession={fetchSession}
+                session={session || fallbackSession}
+                onRefreshSession={() => selectedDecisionId && fetchDecisionDetail(selectedDecisionId)}
                 onNavigateTo={(dest) => setActiveNav(dest)}
               />
             )}
@@ -627,7 +672,7 @@ function PMPilotWorkspace() {
             {activeNav === 'artifacts' && (
               <div style={{ padding: '32px 40px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
                 <DeliveryArtifacts
-                  session={activeSession}
+                  session={session}
                   onReopenDecision={handleReopenDecision}
                 />
               </div>
@@ -637,10 +682,10 @@ function PMPilotWorkspace() {
           {/* Toggleable Copilot Drawer */}
           {isCopilotOpen && (
             <CopilotSidebar
-              decisionMemory={activeSession.decisionMemory || []}
+              decisionMemory={session?.decisionMemory || []}
               onAction={async (type) => {
                 if (type === 'shrink_to_mvp') {
-                  await fetchSession();
+                  if (selectedDecisionId) await fetchDecisionDetail(selectedDecisionId);
                 }
               }}
               onReopenDecision={handleReopenDecision}
@@ -665,14 +710,30 @@ function PMPilotWorkspace() {
       <CaptureSourceModal
         isOpen={isCaptureModalOpen}
         onClose={() => setIsCaptureModalOpen(false)}
+        decisionId={session?.id || 'session_moonshot_checkout'}
+        getAuthHeaders={getAuthHeaders}
         onSourceAdded={async () => {
-          await fetchSession();
+          if (session?.id) await fetchDecisionDetail(session.id);
+          fetchWorkspaceDecisions();
         }}
       />
 
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      <NewDecisionModal
+        isOpen={isNewDecisionModalOpen}
+        onClose={() => setIsNewDecisionModalOpen(false)}
+        workspaceId={activeWorkspace?.id || 'ws_moonshot'}
+        getAuthHeaders={getAuthHeaders}
+        onCreated={(newDecision) => {
+          setWorkspaceDecisions(prev => [newDecision, ...prev]);
+          setSelectedDecisionId(newDecision.id);
+          setSession(newDecision);
+          setActiveNav('decisions');
+        }}
       />
 
       {/* Trigger.dev Async Job Modal */}
