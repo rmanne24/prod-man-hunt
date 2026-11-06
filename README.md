@@ -71,11 +71,6 @@ Maintain isolated workspaces with owner and member access controls, ensuring tha
 
 ---
 
-## System Architecture
-
-PMPilot follows a modular architecture built around a deterministic decision state machine.
-
-
 ## 3. System Architecture
 
 PMPilot follows a modular architecture consisting of a React frontend, a Node.js backend, a deterministic decision engine, persistent storage, and external integrations.
