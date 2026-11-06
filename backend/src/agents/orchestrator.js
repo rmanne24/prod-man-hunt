@@ -97,6 +97,54 @@ export class AgentOrchestrator {
    */
   static async generatePRD(sessionId) {
     const session = await RedisStateManager.getSession(sessionId);
+    const isSynthetic = Boolean(session?.isSyntheticDemo || sessionId === 'session_moonshot_checkout');
+
+    if (!isSynthetic) {
+      const underlyingProblem = session?.problemStatement?.underlyingProblem || session?.problemStatement?.surfaceRequest || 'Modernize product experience based on evidence.';
+      const hypothesis = session?.hypothesis || 'Implementing user-validated solution will improve product metrics.';
+      const signalsList = (session?.signals || []).map((s, idx) => ({
+        id: `REQ-0${idx + 1}`,
+        type: s.epistemicType || 'OBSERVED',
+        text: s.sanitizedText || s.rawText || s.source,
+        source: s.source
+      }));
+
+      return {
+        title: `PRD: ${session?.title || 'Canonical Decision Spec'}`,
+        status: "APPROVED_FOR_DEV",
+        owner: session?.createdBy || "Lead Product Manager",
+        lastUpdated: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        evidenceConfidence: `${session?.decisionHealth?.confidence || 85}%`,
+        isSyntheticDemo: false,
+        verificationStatus: "CANONICAL_SPEC",
+        approvedDecisionVersion: session?.version || 1,
+        provenanceSummary: `Traceable to ${session?.signals?.length || 0} user signals and verified evidence graph in ${session?.title || 'decision'}.`,
+        sections: [
+          {
+            title: "1. Problem Statement & Opportunity",
+            content: underlyingProblem
+          },
+          {
+            title: "2. Hypothesis & Expected Impact",
+            content: hypothesis
+          },
+          {
+            title: "3. Requirements & Evidence Grounding",
+            requirements: signalsList.length > 0 ? signalsList : [
+              { id: "REQ-01", type: "OBSERVED", text: underlyingProblem, source: "Decision Record" }
+            ]
+          },
+          {
+            title: "4. Delivery Plan & Linear Tickets",
+            tickets: [
+              { id: "ENG-101", title: `Implement core functionality for ${session?.title || 'feature'}`, points: 5, status: "Ready" },
+              { id: "ENG-102", title: "Add automated tests and telemetry instrumentation", points: 3, status: "Ready" },
+              { id: "ENG-103", title: "Run end-to-end acceptance validation", points: 2, status: "Ready" }
+            ]
+          }
+        ]
+      };
+    }
 
     return {
       title: "[SYNTHETIC DEMO PRD] AI-Assisted Guest Checkout & Recovery",

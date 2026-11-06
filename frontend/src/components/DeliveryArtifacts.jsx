@@ -81,6 +81,38 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
     }
   };
 
+  if (!session) {
+    return (
+      <div style={{
+        background: '#ffffff',
+        borderRadius: '12px',
+        border: '1px dashed #cbd5e1',
+        padding: '64px 32px',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '12px',
+          background: '#f1f5f9',
+          color: '#64748b',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '16px'
+        }}>
+          <Lock size={24} />
+        </div>
+        <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0' }}>
+          No Active Decision Selected
+        </h3>
+        <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '480px', margin: '0 auto', lineHeight: 1.5 }}>
+          Delivery artifacts (PRD, user stories, Linear sprint tickets) are generated once a product decision is formulated and receives explicit human PM approval.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       background: '#ffffff',

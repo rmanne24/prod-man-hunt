@@ -166,8 +166,13 @@ class OidcService {
       name: verifiedClaims.name || verifiedClaims.nickname || verifiedClaims.email || 'Auth0 PM'
     });
 
-    // Ensure member of default workspace
-    db.addWorkspaceMember('ws_moonshot', user.id, 'MEMBER');
+    // Ensure private personal workspace exists for OIDC user
+    let userWorkspaces = db.getUserWorkspaces(user.id);
+    if (userWorkspaces.length === 0) {
+      const wsId = `ws_${crypto.randomBytes(6).toString('hex')}`;
+      const wsName = `${user.name || 'Personal'}'s Workspace`;
+      db.createWorkspace({ id: wsId, name: wsName, createdBy: user.id });
+    }
 
     return {
       user: {

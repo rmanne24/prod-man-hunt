@@ -15,9 +15,9 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function SwitchCollaborationView({ session, onRefreshSession, _onNavigateTo }) {
-  const { token, isDemoMode } = useAuth();
-  const decisionId = session?.id || session?.sessionId || 'session_moonshot_checkout';
-  const workspaceId = session?.workspaceId || 'ws_moonshot';
+  const { token, isDemoMode, activeWorkspace } = useAuth();
+  const decisionId = session?.id || session?.sessionId || (isDemoMode ? 'session_moonshot_checkout' : null);
+  const workspaceId = session?.workspaceId || activeWorkspace?.id || (isDemoMode ? 'ws_moonshot' : null);
   const currentVersion = session?.version || 1;
   const isCurrentVersionApproved = Boolean(
     session?.approvalRecord?.status === 'APPROVED' &&
@@ -73,6 +73,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
 
   // 2. Fetch Room mapped to current decision
   const fetchRoom = useCallback(async () => {
+    if (!workspaceId || !decisionId) return;
     try {
       const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room`, {
         headers: getHeaders()
@@ -88,6 +89,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
 
   // 3. Fetch proposals for current decision
   const fetchProposals = useCallback(async () => {
+    if (!workspaceId || !decisionId) return;
     setIsProposalsLoading(true);
     try {
       const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals`, {
@@ -106,6 +108,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
 
   // 4. Fetch persistent messages from backend SQLite store
   const fetchMessages = useCallback(async () => {
+    if (!workspaceId || !decisionId) return;
     try {
       const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/messages`, {
         headers: getHeaders()
@@ -357,6 +360,57 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
   };
 
   const statusBadge = getStatusBadge();
+
+  if (!session && !isDemoMode) {
+    return (
+      <div style={{ padding: '32px 40px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
+        <div style={{
+          background: '#ffffff',
+          borderRadius: '12px',
+          border: '1px dashed #cbd5e1',
+          padding: '64px 32px',
+          textAlign: 'center'
+        }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: '#f1f5f9',
+            color: '#64748b',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '16px'
+          }}>
+            <MessageSquare size={24} />
+          </div>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0' }}>
+            No Active Decision Selected for Switch Room
+          </h3>
+          <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '480px', margin: '0 auto 24px auto', lineHeight: 1.5 }}>
+            Switch AI rooms synchronize with canonical decision records. Select or create a decision from the directory to start a collaboration session.
+          </p>
+          {_onNavigateTo && (
+            <button
+              onClick={() => _onNavigateTo('projects')}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '8px',
+                background: '#0f172a',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Open Decisions Directory
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>

@@ -10,15 +10,17 @@ import {
   ShieldCheck,
   Search
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function EvidenceView({ session, onCaptureSourceClick, onNavigateToDecision }) {
+  const { isDemoMode } = useAuth();
   const [filterType, setFilterType] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   const evidenceGraph = session?.evidenceGraph || [];
   const capturedSources = session?.capturedSources || [];
 
-  const sourceItems = [
+  const demoSources = [
     {
       id: 'sig_linear_142',
       type: 'Linear',
@@ -29,7 +31,8 @@ export default function EvidenceView({ session, onCaptureSourceClick, onNavigate
       provenance: '[SYNTHETIC DEMO FIXTURE] Synthesized issue payload for drop-off telemetry.',
       epistemicBadge: 'OBSERVED',
       linkedDecision: '[SYNTHETIC DEMO] One-Click Guest Checkout & Cart Recovery',
-      status: 'EVALUATED'
+      status: 'EVALUATED',
+      isSyntheticDemo: true
     },
     {
       id: 'sig_figma_3a',
@@ -41,7 +44,8 @@ export default function EvidenceView({ session, onCaptureSourceClick, onNavigate
       provenance: '[SYNTHETIC DEMO FIXTURE] Synthesized vector canvas metadata.',
       epistemicBadge: 'OBSERVED',
       linkedDecision: '[SYNTHETIC DEMO] One-Click Guest Checkout & Cart Recovery',
-      status: 'EVALUATED'
+      status: 'EVALUATED',
+      isSyntheticDemo: true
     },
     {
       id: 'sig_notion_sec',
@@ -53,7 +57,8 @@ export default function EvidenceView({ session, onCaptureSourceClick, onNavigate
       provenance: '[SYNTHETIC DEMO FIXTURE] Synthesized documentation page.',
       epistemicBadge: 'OBSERVED',
       linkedDecision: '[SYNTHETIC DEMO] One-Click Guest Checkout & Cart Recovery',
-      status: 'EVALUATED'
+      status: 'EVALUATED',
+      isSyntheticDemo: true
     },
     {
       id: 'sig_exa_bench',
@@ -65,9 +70,46 @@ export default function EvidenceView({ session, onCaptureSourceClick, onNavigate
       provenance: '[SYNTHETIC BENCHMARK] Synthesized market intelligence fixture.',
       epistemicBadge: 'INFERRED',
       linkedDecision: '[SYNTHETIC DEMO] One-Click Guest Checkout & Cart Recovery',
-      status: 'EVALUATED'
+      status: 'EVALUATED',
+      isSyntheticDemo: true
     }
   ];
+
+  // Map real signals from active session if present
+  const realSignals = (session?.signals || []).map((sig) => {
+    const linkedNode = evidenceGraph.find(n => n.sources?.some(s => s.sourceSignalId === sig.id));
+    return {
+      id: sig.id,
+      type: sig.sourceType || 'Customer Feedback',
+      badge: (sig.source || 'S').replace(/^\[.*?\]\s*/, '')[0]?.toUpperCase() || 'S',
+      name: sig.source || 'Captured Signal',
+      timestamp: sig.capturedAt ? new Date(sig.capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+      verbatimExcerpt: sig.sanitizedText || sig.rawText || '',
+      provenance: sig.url || 'Direct signal capture',
+      epistemicBadge: sig.epistemicType || linkedNode?.badgeType || 'OBSERVED',
+      linkedDecision: session?.title || 'Active Decision',
+      status: sig.processingStatus || 'EVALUATED',
+      isSyntheticDemo: Boolean(sig.isSyntheticDemo)
+    };
+  });
+
+  const fallbackSources = capturedSources.map(cs => ({
+    id: cs.id,
+    type: cs.type || 'Source',
+    badge: cs.badge || 'S',
+    name: cs.name || 'Captured Source',
+    timestamp: cs.timestamp || 'Captured',
+    verbatimExcerpt: cs.extractedContent || '',
+    provenance: cs.url || 'External capture',
+    epistemicBadge: 'OBSERVED',
+    linkedDecision: session?.title || 'Active Decision',
+    status: cs.status || 'EVALUATED',
+    isSyntheticDemo: Boolean(cs.isSyntheticDemo)
+  }));
+
+  const sourceItems = realSignals.length > 0 
+    ? realSignals 
+    : (fallbackSources.length > 0 ? fallbackSources : (isDemoMode ? demoSources : []));
 
   const filteredSources = sourceItems.filter(item => {
     if (filterType !== 'ALL' && item.type.toLowerCase() !== filterType.toLowerCase()) {
@@ -179,18 +221,71 @@ export default function EvidenceView({ session, onCaptureSourceClick, onNavigate
       </div>
 
       {/* Sources Grid */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '28px' }}>
-        {filteredSources.map((source) => (
-          <div
-            key={source.id}
-            style={{
-              background: '#ffffff',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              padding: '20px 24px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-            }}
-          >
+      {filteredSources.length === 0 ? (
+        <div style={{
+          background: '#ffffff',
+          borderRadius: '12px',
+          border: '1px dashed #cbd5e1',
+          padding: '64px 32px',
+          textAlign: 'center',
+          marginBottom: '28px'
+        }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: '#f1f5f9',
+            color: '#64748b',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '16px'
+          }}>
+            <FileText size={24} />
+          </div>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0' }}>
+            {session ? 'No Evidence Signals Captured Yet' : 'No Active Decision Selected'}
+          </h3>
+          <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '480px', margin: '0 auto 24px auto', lineHeight: 1.5 }}>
+            {session 
+              ? 'Capture raw customer feedback, Zendesk tickets, or research notes to ground this decision record.'
+              : 'Select or create a product decision in this workspace to view and capture evidence signals.'}
+          </p>
+          {session && onCaptureSourceClick && (
+            <button
+              onClick={onCaptureSourceClick}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '8px',
+                background: '#0f172a',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Plus size={16} />
+              <span>Capture First Signal</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '28px' }}>
+          {filteredSources.map((source) => (
+            <div
+              key={source.id}
+              style={{
+                background: '#ffffff',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                padding: '20px 24px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+              }}
+            >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{
@@ -293,7 +388,8 @@ export default function EvidenceView({ session, onCaptureSourceClick, onNavigate
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
 
       {/* Grounding Guarantee Notice */}
       <div style={{

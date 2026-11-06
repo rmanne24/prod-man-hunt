@@ -3,7 +3,8 @@ import { CheckCircle2, Info, ExternalLink, Shield, Plug, Unplug, Check, AlertTri
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function IntegrationsView({ onNavigateTo }) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, activeWorkspace } = useAuth();
+  const workspaceId = activeWorkspace?.id || 'ws_moonshot';
   const [hubStatus, setHubStatus] = useState(null);
   const [authConfig, setAuthConfig] = useState(null);
   const [linearStatus, setLinearStatus] = useState(null);
@@ -16,7 +17,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     try {
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('http://localhost:4000/api/workspaces/ws_moonshot/integrations/linear/status', { headers });
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/status`, { headers });
       if (res.ok) {
         const data = await res.json();
         setLinearStatus(data);
@@ -24,7 +25,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     } catch (err) {
       console.warn('Could not fetch Linear status:', err.message);
     }
-  }, [token]);
+  }, [token, workspaceId]);
 
   // Handle incoming Linear OAuth callback
   const handleLinearCallback = useCallback(async (code, state) => {
@@ -34,7 +35,7 @@ export default function IntegrationsView({ onNavigateTo }) {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const redirectUri = `${window.location.origin}/`;
-      const res = await fetch('http://localhost:4000/api/workspaces/ws_moonshot/integrations/linear/callback', {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/callback`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ code, state, redirectUri })
@@ -62,7 +63,7 @@ export default function IntegrationsView({ onNavigateTo }) {
       setIsProcessing(false);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [token, fetchLinearStatus]);
+  }, [token, workspaceId, fetchLinearStatus]);
 
   useEffect(() => {
     fetch('http://localhost:4000/api/hub/status')
@@ -112,7 +113,7 @@ export default function IntegrationsView({ onNavigateTo }) {
       setIsProcessing(true);
       const redirectUri = `${window.location.origin}/`;
       const res = await fetch(
-        `http://localhost:4000/api/workspaces/ws_moonshot/integrations/linear/authorize-url?redirectUri=${encodeURIComponent(redirectUri)}`,
+        `http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/authorize-url?redirectUri=${encodeURIComponent(redirectUri)}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
 
@@ -142,7 +143,7 @@ export default function IntegrationsView({ onNavigateTo }) {
 
     try {
       setIsProcessing(true);
-      const res = await fetch('http://localhost:4000/api/workspaces/ws_moonshot/integrations/linear/disconnect', {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/disconnect`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

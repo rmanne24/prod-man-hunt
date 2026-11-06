@@ -370,13 +370,14 @@ app.post("/api/decisions/:id/artifacts", requireWorkspaceMember, async (req, res
 
     // 2. Mark artifacts generated
     const current = await RedisStateManager.getRawDecision(req.params.id);
+    const isSynthetic = Boolean(current?.isSyntheticDemo || current?.id === 'session_moonshot_checkout');
     const updatedDecision = await RedisStateManager.markArtifactsGenerated(req.params.id, {
       prd: {
-        title: "[SYNTHETIC DEMO PRD] AI-Assisted Guest Checkout & Cart Recovery",
+        title: isSynthetic ? "[SYNTHETIC DEMO PRD] AI-Assisted Guest Checkout & Cart Recovery" : `PRD: ${current?.title || 'Product Decision'}`,
         version: "1.0.0",
         approvedAt: new Date().toISOString(),
-        isSyntheticDemo: true,
-        verificationStatus: "SYNTHETIC_DEMO",
+        isSyntheticDemo: isSynthetic,
+        verificationStatus: isSynthetic ? "SYNTHETIC_DEMO" : "CANONICAL_SPEC",
         approvedDecisionVersion: current?.version || null
       }
     }, current?.version || null);

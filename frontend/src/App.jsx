@@ -663,7 +663,7 @@ function PMPilotWorkspace() {
 
             {activeNav === 'switch' && (
               <SwitchCollaborationView
-                session={session || fallbackSession}
+                session={session || (isDemoMode ? fallbackSession : null)}
                 onRefreshSession={() => selectedDecisionId && fetchDecisionDetail(selectedDecisionId)}
                 onNavigateTo={(dest) => setActiveNav(dest)}
               />
