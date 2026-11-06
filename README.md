@@ -10,7 +10,7 @@ Unlike generic AI assistants that generate recommendations without accountabilit
 
 ## Live Demo
 
-**Live Application:** [Add deployed application URL here]
+**Live Application:** 
 
 **Source Code:** [PMPilot — GitHub Repository](https://github.com/rmanne24/prod-man-hunt)
 
