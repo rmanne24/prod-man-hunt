@@ -219,6 +219,43 @@ export class PMPilotDatabase {
       this.db.exec('ALTER TABLE switch_proposals ADD COLUMN merged_decision_version INTEGER;');
     } catch (_) { }
 
+    // Safe schema migrations for integration_connections (selected_resources, sync_cursor, error_state)
+    try {
+      this.db.exec('ALTER TABLE integration_connections ADD COLUMN selected_resources TEXT;');
+    } catch (_) { }
+    try {
+      this.db.exec('ALTER TABLE integration_connections ADD COLUMN sync_cursor TEXT;');
+    } catch (_) { }
+    try {
+      this.db.exec('ALTER TABLE integration_connections ADD COLUMN error_state TEXT;');
+    } catch (_) { }
+
+    // Evidence Ingestion: Workspace-scoped imported records table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS imported_records (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        source_url TEXT,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        author TEXT,
+        original_created_at TEXT,
+        original_updated_at TEXT,
+        imported_at TEXT NOT NULL,
+        sync_state TEXT NOT NULL DEFAULT 'IMPORTED',
+        metadata TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(workspace_id, provider, external_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_imported_records_ws_prov ON imported_records(workspace_id, provider);
+      CREATE INDEX IF NOT EXISTS idx_imported_records_ext ON imported_records(workspace_id, provider, external_id);
+    `);
+
     // Preserve NULL for legacy proposals whose merged version cannot be independently proven
     try {
       this.db.exec("UPDATE switch_proposals SET merged_decision_version = NULL WHERE id IN ('prop_sw_1793898149094_d097ll', 'prop_sw_1793899854187_tv51ey');");
@@ -293,8 +330,9 @@ export class PMPilotDatabase {
         provider_organization_id, provider_organization_name, provider_user_id,
         scopes, status, encrypted_access_token, token_iv, token_tag,
         encrypted_refresh_token, refresh_iv, refresh_tag,
-        expires_at, last_synced_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        expires_at, last_synced_at, selected_resources, sync_cursor, error_state,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workspace_id, provider) DO UPDATE SET
         connected_by_user_id = excluded.connected_by_user_id,
         provider_organization_id = excluded.provider_organization_id,
@@ -310,6 +348,9 @@ export class PMPilotDatabase {
         refresh_tag = excluded.refresh_tag,
         expires_at = excluded.expires_at,
         last_synced_at = excluded.last_synced_at,
+        selected_resources = COALESCE(excluded.selected_resources, integration_connections.selected_resources),
+        sync_cursor = COALESCE(excluded.sync_cursor, integration_connections.sync_cursor),
+        error_state = excluded.error_state,
         updated_at = excluded.updated_at
     `);
     this.stmtDisconnectIntegrationConnection = this.db.prepare(`
@@ -321,18 +362,84 @@ export class PMPilotDatabase {
         encrypted_refresh_token = NULL,
         refresh_iv = NULL,
         refresh_tag = NULL,
+        error_state = NULL,
         updated_at = ?
       WHERE workspace_id = ? AND provider = ?
     `);
     this.stmtUpdateSyncTimestamp = this.db.prepare(`
       UPDATE integration_connections SET last_synced_at = ?, updated_at = ? WHERE workspace_id = ? AND provider = ?
     `);
+    this.stmtUpdateIntegrationMetadata = this.db.prepare(`
+      UPDATE integration_connections SET
+        selected_resources = COALESCE(?, selected_resources),
+        sync_cursor = COALESCE(?, sync_cursor),
+        error_state = ?,
+        last_synced_at = COALESCE(?, last_synced_at),
+        status = COALESCE(?, status),
+        updated_at = ?
+      WHERE workspace_id = ? AND provider = ?
+    `);
     this.stmtListIntegrationConnections = this.db.prepare(
-      'SELECT id, workspace_id, provider, connected_by_user_id, provider_organization_id, provider_organization_name, scopes, status, expires_at, last_synced_at, created_at, updated_at FROM integration_connections WHERE workspace_id = ?'
+      'SELECT id, workspace_id, provider, connected_by_user_id, provider_organization_id, provider_organization_name, scopes, status, expires_at, last_synced_at, selected_resources, sync_cursor, error_state, created_at, updated_at FROM integration_connections WHERE workspace_id = ?'
     );
     this.stmtDeleteIntegrationConnection = this.db.prepare(
       'DELETE FROM integration_connections WHERE workspace_id = ? AND provider = ?'
     );
+
+    // Evidence Ingestion: Imported Records
+    this.stmtUpsertImportedRecord = this.db.prepare(`
+      INSERT INTO imported_records (
+        id, workspace_id, provider, external_id, source_url, title, content,
+        content_type, author, original_created_at, original_updated_at,
+        imported_at, sync_state, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, provider, external_id) DO UPDATE SET
+        source_url = excluded.source_url,
+        title = excluded.title,
+        content = excluded.content,
+        content_type = excluded.content_type,
+        author = excluded.author,
+        original_created_at = excluded.original_created_at,
+        original_updated_at = excluded.original_updated_at,
+        imported_at = excluded.imported_at,
+        sync_state = excluded.sync_state,
+        metadata = excluded.metadata,
+        updated_at = excluded.updated_at
+    `);
+    this.stmtListImportedRecordsAll = this.db.prepare(`
+      SELECT * FROM imported_records
+      WHERE workspace_id = ?
+      ORDER BY imported_at DESC
+      LIMIT ? OFFSET ?
+    `);
+    this.stmtListImportedRecordsByProvider = this.db.prepare(`
+      SELECT * FROM imported_records
+      WHERE workspace_id = ? AND provider = ?
+      ORDER BY imported_at DESC
+      LIMIT ? OFFSET ?
+    `);
+    this.stmtCountImportedRecordsAll = this.db.prepare(`
+      SELECT COUNT(*) as count FROM imported_records
+      WHERE workspace_id = ?
+    `);
+    this.stmtCountImportedRecordsByProvider = this.db.prepare(`
+      SELECT COUNT(*) as count FROM imported_records
+      WHERE workspace_id = ? AND provider = ?
+    `);
+    this.stmtGetImportedRecord = this.db.prepare(`
+      SELECT * FROM imported_records
+      WHERE workspace_id = ? AND provider = ? AND external_id = ?
+    `);
+    this.stmtGetImportedRecordById = this.db.prepare(`
+      SELECT * FROM imported_records
+      WHERE workspace_id = ? AND id = ?
+    `);
+    this.stmtUpdateImportedRecordSyncState = this.db.prepare(`
+      UPDATE imported_records SET sync_state = ?, updated_at = ? WHERE workspace_id = ? AND id = ?
+    `);
+    this.stmtDeleteImportedRecord = this.db.prepare(`
+      DELETE FROM imported_records WHERE workspace_id = ? AND id = ?
+    `);
 
     // Custom Integrations
     this.stmtInsertCustomIntegration = this.db.prepare(`
@@ -624,10 +731,17 @@ export class PMPilotDatabase {
     encryptedRefreshToken = null,
     refreshIv = null,
     refreshTag = null,
-    expiresAt = null
+    expiresAt = null,
+    selectedResources = null,
+    syncCursor = null,
+    errorState = null
   }) {
     const now = new Date().toISOString();
     const connId = id || `conn_${provider.toLowerCase()}_${Date.now()}`;
+    const serializedResources = typeof selectedResources === 'object' && selectedResources !== null
+      ? JSON.stringify(selectedResources)
+      : (selectedResources || null);
+
     this.stmtUpsertIntegrationConnection.run(
       connId,
       workspaceId,
@@ -646,8 +760,37 @@ export class PMPilotDatabase {
       refreshTag,
       expiresAt,
       now,
+      serializedResources,
+      syncCursor || null,
+      errorState || null,
       now,
       now
+    );
+    return this.getIntegrationConnection(workspaceId, provider);
+  }
+
+  updateIntegrationMetadata(workspaceId, provider, {
+    selectedResources = null,
+    syncCursor = null,
+    errorState = null,
+    lastSyncedAt = null,
+    status = null
+  } = {}) {
+    if (!workspaceId || !provider) return null;
+    const now = new Date().toISOString();
+    const serializedResources = typeof selectedResources === 'object' && selectedResources !== null
+      ? JSON.stringify(selectedResources)
+      : (selectedResources !== undefined ? selectedResources : null);
+
+    this.stmtUpdateIntegrationMetadata.run(
+      serializedResources,
+      syncCursor !== undefined ? syncCursor : null,
+      errorState !== undefined ? errorState : null,
+      lastSyncedAt || null,
+      status || null,
+      now,
+      workspaceId,
+      provider
     );
     return this.getIntegrationConnection(workspaceId, provider);
   }
@@ -671,6 +814,95 @@ export class PMPilotDatabase {
   deleteIntegrationConnection(workspaceId, provider) {
     if (!workspaceId || !provider) return false;
     const result = this.stmtDeleteIntegrationConnection.run(workspaceId, provider);
+    return result.changes > 0;
+  }
+
+  // --- Imported Evidence Records Repository Methods ---
+
+  saveImportedRecord({
+    id,
+    workspaceId,
+    provider,
+    externalId,
+    sourceUrl = null,
+    title,
+    content,
+    contentType,
+    author = null,
+    originalCreatedAt = null,
+    originalUpdatedAt = null,
+    syncState = 'IMPORTED',
+    metadata = null
+  }) {
+    if (!workspaceId || !provider || !externalId || !title) {
+      throw new Error('workspaceId, provider, externalId, and title are required to save an imported record.');
+    }
+    const recordId = id || `rec_${provider.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+    const serializedMetadata = typeof metadata === 'object' && metadata !== null
+      ? JSON.stringify(metadata)
+      : (metadata || null);
+
+    this.stmtUpsertImportedRecord.run(
+      recordId,
+      workspaceId,
+      provider,
+      externalId,
+      sourceUrl,
+      title,
+      content || '',
+      contentType || 'DOCUMENT',
+      author,
+      originalCreatedAt || now,
+      originalUpdatedAt || now,
+      now,
+      syncState,
+      serializedMetadata,
+      now,
+      now
+    );
+
+    return this.getImportedRecord(workspaceId, provider, externalId);
+  }
+
+  listImportedRecords(workspaceId, provider = null, limit = 50, offset = 0) {
+    if (!workspaceId) return [];
+    if (provider) {
+      return this.stmtListImportedRecordsByProvider.all(workspaceId, provider, limit, offset) || [];
+    }
+    return this.stmtListImportedRecordsAll.all(workspaceId, limit, offset) || [];
+  }
+
+  countImportedRecords(workspaceId, provider = null) {
+    if (!workspaceId) return 0;
+    if (provider) {
+      const res = this.stmtCountImportedRecordsByProvider.get(workspaceId, provider);
+      return res?.count || 0;
+    }
+    const res = this.stmtCountImportedRecordsAll.get(workspaceId);
+    return res?.count || 0;
+  }
+
+  getImportedRecord(workspaceId, provider, externalId) {
+    if (!workspaceId || !provider || !externalId) return null;
+    return this.stmtGetImportedRecord.get(workspaceId, provider, externalId) || null;
+  }
+
+  getImportedRecordById(workspaceId, id) {
+    if (!workspaceId || !id) return null;
+    return this.stmtGetImportedRecordById.get(workspaceId, id) || null;
+  }
+
+  updateImportedRecordSyncState(workspaceId, id, syncState) {
+    if (!workspaceId || !id) return null;
+    const now = new Date().toISOString();
+    this.stmtUpdateImportedRecordSyncState.run(syncState, now, workspaceId, id);
+    return this.getImportedRecordById(workspaceId, id);
+  }
+
+  deleteImportedRecord(workspaceId, id) {
+    if (!workspaceId || !id) return false;
+    const result = this.stmtDeleteImportedRecord.run(workspaceId, id);
     return result.changes > 0;
   }
 

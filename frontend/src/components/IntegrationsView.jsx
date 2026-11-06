@@ -9,9 +9,13 @@ import {
   Eye,
   EyeOff,
   Power,
-  Sparkles
+  Sparkles,
+  RotateCw,
+  Database
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import IntegrationWizardModal from './IntegrationWizardModal.jsx';
+import EvidenceReviewModal from './EvidenceReviewModal.jsx';
 
 export default function IntegrationsView({ onNavigateTo }) {
   const { token, isAuthenticated, activeWorkspace, isDemoMode } = useAuth();
@@ -21,9 +25,16 @@ export default function IntegrationsView({ onNavigateTo }) {
   const [linearStatus, setLinearStatus] = useState(null);
   const [slackStatus, setSlackStatus] = useState(null);
   const [switchPreflight, setSwitchPreflight] = useState(null);
+  const [integrationsSummary, setIntegrationsSummary] = useState(null);
 
   // State: Custom Integrations
   const [customIntegrations, setCustomIntegrations] = useState([]);
+  const [isLoadingCustom, setIsLoadingCustom] = useState(false);
+
+  // State: Wizards & Evidence Inspector
+  const [activeWizard, setActiveWizard] = useState(null);
+  const [isEvidenceReviewOpen, setIsEvidenceReviewOpen] = useState(false);
+  const [syncingProvider, setSyncingProvider] = useState(null);
 
   // State: UI & Modals
   const [activeTab, setActiveTab] = useState('ALL'); // ALL, CORE, COLLAB, DESIGN, CUSTOM, COMING_SOON
@@ -166,8 +177,95 @@ export default function IntegrationsView({ onNavigateTo }) {
     }
   }, [workspaceId, getHeaders, fetchLinearStatus]);
 
+  // Fetch Integrations Summary across all providers
+  const fetchIntegrationsSummary = useCallback(async () => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/summary`, {
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.integrations) {
+          setIntegrationsSummary(data.integrations);
+          if (data.integrations.linear) setLinearStatus(data.integrations.linear);
+          if (data.integrations.slack) setSlackStatus(data.integrations.slack);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch integrations summary:', err.message);
+    }
+  }, [workspaceId, getHeaders]);
+
+  // Sync Now action for any connected provider
+  const handleSyncNow = useCallback(async (providerId) => {
+    setSyncingProvider(providerId);
+    try {
+      let endpoint = '';
+      if (providerId === 'google_drive') endpoint = 'google-drive';
+      else if (providerId === 'github') endpoint = 'github';
+      else if (providerId === 'notion') endpoint = 'notion';
+      else if (providerId === 'jira') endpoint = 'jira';
+      else if (providerId === 'figma') endpoint = 'figma';
+      else if (providerId === 'productboard') endpoint = 'productboard';
+
+      if (!endpoint) return;
+
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/${endpoint}/sync`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ incremental: true })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionAlert({
+          type: 'success',
+          text: `Successfully synced ${data.importedCount !== undefined ? `${data.importedCount} records from ` : ''}${providerId.replace('_', ' ').toUpperCase()}.`
+        });
+        fetchIntegrationsSummary();
+      } else {
+        setActionAlert({ type: 'error', text: data.error || 'Sync failed.' });
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: `Sync network error: ${err.message}` });
+    } finally {
+      setSyncingProvider(null);
+    }
+  }, [workspaceId, getHeaders, fetchIntegrationsSummary]);
+
+  // Disconnect any provider
+  const handleDisconnectProvider = useCallback(async (providerId, providerDisplayName) => {
+    if (!window.confirm(`Are you sure you want to disconnect ${providerDisplayName}?`)) return;
+    setIsProcessing(true);
+    try {
+      let endpoint = '';
+      if (providerId === 'google_drive') endpoint = 'google-drive';
+      else if (providerId === 'github') endpoint = 'github';
+      else if (providerId === 'notion') endpoint = 'notion';
+      else if (providerId === 'jira') endpoint = 'jira';
+      else if (providerId === 'figma') endpoint = 'figma';
+      else if (providerId === 'productboard') endpoint = 'productboard';
+
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/${endpoint}/disconnect`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        setActionAlert({
+          type: 'success',
+          text: `${providerDisplayName} disconnected successfully.`
+        });
+        fetchIntegrationsSummary();
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: err.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [workspaceId, getHeaders, fetchIntegrationsSummary]);
+
   // Initial load
   useEffect(() => {
+    fetchIntegrationsSummary();
     fetchLinearStatus();
     fetchSlackStatus();
     fetchSwitchStatus();
@@ -182,7 +280,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     if (code && state && !hasAuth0Verifier) {
       handleLinearCallback(code, state);
     }
-  }, [fetchLinearStatus, fetchSlackStatus, fetchSwitchStatus, fetchCustomIntegrations, handleLinearCallback]);
+  }, [fetchIntegrationsSummary, fetchLinearStatus, fetchSlackStatus, fetchSwitchStatus, fetchCustomIntegrations, handleLinearCallback]);
 
   const handleConnectLinear = async () => {
     if (!isAuthenticated && !isDemoMode) {
@@ -465,6 +563,24 @@ export default function IntegrationsView({ onNavigateTo }) {
   const isSlackConnected = Boolean(slackStatus?.connected);
   const isSwitchConnected = switchPreflight?.status === 'CONNECTED';
 
+  const gdriveStatus = integrationsSummary?.googleDrive;
+  const isGdriveConnected = Boolean(gdriveStatus?.connected);
+
+  const githubStatus = integrationsSummary?.github;
+  const isGithubConnected = Boolean(githubStatus?.connected);
+
+  const notionStatus = integrationsSummary?.notion;
+  const isNotionConnected = Boolean(notionStatus?.connected);
+
+  const jiraStatus = integrationsSummary?.jira;
+  const isJiraConnected = Boolean(jiraStatus?.connected);
+
+  const figmaStatus = integrationsSummary?.figma;
+  const isFigmaConnected = Boolean(figmaStatus?.connected);
+
+  const pbStatus = integrationsSummary?.productboard;
+  const isPbConnected = Boolean(pbStatus?.connected);
+
   const coreIntegrations = [
     {
       id: 'linear',
@@ -526,6 +642,174 @@ export default function IntegrationsView({ onNavigateTo }) {
         setTestResult(null);
         setActiveModal('switch');
       }
+    },
+    {
+      id: 'google_drive',
+      name: 'Google Drive & Docs',
+      category: 'COLLAB',
+      badge: 'WORKSPACE & DOCS',
+      logoText: 'G',
+      logoBg: '#34a853',
+      tagline: 'Ingest research transcripts & PRD documents',
+      description: 'Extract plain-text and structured content from Google Docs and Drive folders into reviewable decision signals with timestamp preservation.',
+      status: isGdriveConnected ? 'CONNECTED' : (gdriveStatus?.configured ? 'NOT_CONNECTED' : 'CONFIG_REQUIRED'),
+      statusLabel: isGdriveConnected ? 'Connected' : (gdriveStatus?.configured ? 'Not connected' : 'Available to Connect'),
+      connectedDetails: isGdriveConnected ? gdriveStatus.connection?.organizationName : null,
+      importedCount: gdriveStatus?.importedCount || 0,
+      lastSyncedAt: gdriveStatus?.connection?.lastSyncedAt,
+      selectedResources: gdriveStatus?.connection?.selectedResources,
+      isAvailable: true,
+      onManage: () => {
+        setActiveWizard({
+          provider: 'GOOGLE_DRIVE',
+          providerName: 'Google Drive & Docs',
+          logoText: 'G',
+          logoBg: '#34a853',
+          connection: gdriveStatus?.connection
+        });
+      },
+      onSyncNow: () => handleSyncNow('google_drive'),
+      onDisconnect: () => handleDisconnectProvider('google_drive', 'Google Drive & Docs')
+    },
+    {
+      id: 'github',
+      name: 'GitHub',
+      category: 'CORE',
+      badge: 'VERSION CONTROL',
+      logoText: 'GH',
+      logoBg: '#24292e',
+      tagline: 'Link architectural decisions to Pull Requests & Issues',
+      description: 'Track PR merge status, commit hashes, and detect discrepancies between approved specifications and code.',
+      status: isGithubConnected ? 'CONNECTED' : (githubStatus?.configured ? 'NOT_CONNECTED' : 'CONFIG_REQUIRED'),
+      statusLabel: isGithubConnected ? 'Connected' : (githubStatus?.configured ? 'Not connected' : 'Available to Connect'),
+      connectedDetails: isGithubConnected ? githubStatus.connection?.organizationName : null,
+      importedCount: githubStatus?.importedCount || 0,
+      lastSyncedAt: githubStatus?.connection?.lastSyncedAt,
+      selectedResources: githubStatus?.connection?.selectedResources,
+      isAvailable: true,
+      onManage: () => {
+        setActiveWizard({
+          provider: 'GITHUB',
+          providerName: 'GitHub',
+          logoText: 'GH',
+          logoBg: '#24292e',
+          connection: githubStatus?.connection
+        });
+      },
+      onSyncNow: () => handleSyncNow('github'),
+      onDisconnect: () => handleDisconnectProvider('github', 'GitHub')
+    },
+    {
+      id: 'notion',
+      name: 'Notion',
+      category: 'COLLAB',
+      badge: 'DOCUMENTATION',
+      logoText: 'N',
+      logoBg: '#000000',
+      tagline: 'Bi-directional PRD sync & product documentation',
+      description: 'Import product requirements into evidence and publish human-approved PRDs directly into team Notion databases with strict approval guards.',
+      status: isNotionConnected ? 'CONNECTED' : (notionStatus?.configured ? 'NOT_CONNECTED' : 'CONFIG_REQUIRED'),
+      statusLabel: isNotionConnected ? 'Connected' : (notionStatus?.configured ? 'Not connected' : 'Available to Connect'),
+      connectedDetails: isNotionConnected ? notionStatus.connection?.organizationName : null,
+      importedCount: notionStatus?.importedCount || 0,
+      lastSyncedAt: notionStatus?.connection?.lastSyncedAt,
+      selectedResources: notionStatus?.connection?.selectedResources,
+      isAvailable: true,
+      onManage: () => {
+        setActiveWizard({
+          provider: 'NOTION',
+          providerName: 'Notion',
+          logoText: 'N',
+          logoBg: '#000000',
+          connection: notionStatus?.connection
+        });
+      },
+      onSyncNow: () => handleSyncNow('notion'),
+      onDisconnect: () => handleDisconnectProvider('notion', 'Notion')
+    },
+    {
+      id: 'jira',
+      name: 'Jira Software',
+      category: 'CORE',
+      badge: 'ISSUE TRACKING',
+      logoText: 'J',
+      logoBg: '#0052cc',
+      tagline: 'Enterprise Atlassian sprint & epic delivery',
+      description: 'Push human-approved specifications into Jira epics and stories with strict approval & version guards.',
+      status: isJiraConnected ? 'CONNECTED' : (jiraStatus?.configured ? 'NOT_CONNECTED' : 'CONFIG_REQUIRED'),
+      statusLabel: isJiraConnected ? 'Connected' : (jiraStatus?.configured ? 'Not connected' : 'Available to Connect'),
+      connectedDetails: isJiraConnected ? jiraStatus.connection?.organizationName : null,
+      importedCount: jiraStatus?.importedCount || 0,
+      lastSyncedAt: jiraStatus?.connection?.lastSyncedAt,
+      selectedResources: jiraStatus?.connection?.selectedResources,
+      isAvailable: true,
+      onManage: () => {
+        setActiveWizard({
+          provider: 'JIRA',
+          providerName: 'Jira Software',
+          logoText: 'J',
+          logoBg: '#0052cc',
+          connection: jiraStatus?.connection
+        });
+      },
+      onSyncNow: () => handleSyncNow('jira'),
+      onDisconnect: () => handleDisconnectProvider('jira', 'Jira Software')
+    },
+    {
+      id: 'figma',
+      name: 'Figma',
+      category: 'DESIGN',
+      badge: 'DESIGN SPEC',
+      logoText: 'F',
+      logoBg: '#f24e1e',
+      tagline: 'Anchor design frame annotations to evidence graphs',
+      description: 'Import canvas frame hierarchies and critique comments into decision contradiction graphs.',
+      status: isFigmaConnected ? 'CONNECTED' : (figmaStatus?.configured ? 'NOT_CONNECTED' : 'CONFIG_REQUIRED'),
+      statusLabel: isFigmaConnected ? 'Connected' : (figmaStatus?.configured ? 'Not connected' : 'Available to Connect'),
+      connectedDetails: isFigmaConnected ? figmaStatus.connection?.organizationName : null,
+      importedCount: figmaStatus?.importedCount || 0,
+      lastSyncedAt: figmaStatus?.connection?.lastSyncedAt,
+      selectedResources: figmaStatus?.connection?.selectedResources,
+      isAvailable: true,
+      onManage: () => {
+        setActiveWizard({
+          provider: 'FIGMA',
+          providerName: 'Figma',
+          logoText: 'F',
+          logoBg: '#f24e1e',
+          connection: figmaStatus?.connection
+        });
+      },
+      onSyncNow: () => handleSyncNow('figma'),
+      onDisconnect: () => handleDisconnectProvider('figma', 'Figma')
+    },
+    {
+      id: 'productboard',
+      name: 'Productboard',
+      category: 'DESIGN',
+      badge: 'CUSTOMER INSIGHTS',
+      logoText: 'PB',
+      logoBg: '#1877f2',
+      tagline: 'Customer feedback notes & feature prioritization matrix',
+      description: 'Ingest customer feedback trends, verbatim quotes, and strategic feature opportunities directly into trade-off models.',
+      status: isPbConnected ? 'CONNECTED' : (pbStatus?.configured ? 'NOT_CONNECTED' : 'CONFIG_REQUIRED'),
+      statusLabel: isPbConnected ? 'Connected' : (pbStatus?.configured ? 'Not connected' : 'Available to Connect'),
+      connectedDetails: isPbConnected ? pbStatus.connection?.organizationName : null,
+      importedCount: pbStatus?.importedCount || 0,
+      lastSyncedAt: pbStatus?.connection?.lastSyncedAt,
+      selectedResources: pbStatus?.connection?.selectedResources,
+      isAvailable: true,
+      onManage: () => {
+        setActiveWizard({
+          provider: 'PRODUCTBOARD',
+          providerName: 'Productboard',
+          logoText: 'PB',
+          logoBg: '#1877f2',
+          connection: pbStatus?.connection
+        });
+      },
+      onSyncNow: () => handleSyncNow('productboard'),
+      onDisconnect: () => handleDisconnectProvider('productboard', 'Productboard')
     }
   ];
 
@@ -581,93 +865,48 @@ export default function IntegrationsView({ onNavigateTo }) {
 
   const comingSoonIntegrations = [
     {
-      id: 'github',
-      name: 'GitHub',
-      category: 'CORE',
-      badge: 'COMING SOON',
-      logoText: 'GH',
-      logoBg: '#24292e',
-      tagline: 'Link architectural decisions to Pull Requests & Issues',
-      description: 'Bi-directionally track PR status, commit hashes, and codebase diffs against canonical decision specifications.',
-      plannedCapabilities: [
-        'Associate pull requests directly with approved decisions',
-        'Automatic issue labeling based on decision product area',
-        'Check-run gate blocking code merge if decision approval relocks'
-      ]
-    },
-    {
-      id: 'figma',
-      name: 'Figma',
+      id: 'miro',
+      name: 'Miro',
       category: 'DESIGN',
       badge: 'COMING SOON',
-      logoText: 'F',
-      logoBg: '#f24e1e',
-      tagline: 'Anchor design frame annotations to evidence graphs',
-      description: 'Import vector canvas frame metadata and usability test prototype recordings into decision contradiction graphs.',
+      logoText: 'M',
+      logoBg: '#ffd02f',
+      tagline: 'Visual user journey & systems architecture boards',
+      description: 'Sync customer journey mapping canvases and architectural whiteboards directly into decision problem contexts.',
       plannedCapabilities: [
-        'Live Figma frame preview inside Decision Overview',
-        'Extract design constraints directly into contradiction matrix',
-        'Notify designers when PM approves UX specification changes'
+        'Associate Miro frame sticky notes directly with decision constraints',
+        'Export decision specification flowcharts to Miro boards',
+        'Notify visual designers when technical requirements change'
       ]
     },
     {
-      id: 'notion',
-      name: 'Notion',
-      category: 'COLLAB',
-      badge: 'COMING SOON',
-      logoText: 'N',
-      logoBg: '#000000',
-      tagline: 'Bi-directional PRD & documentation knowledge sync',
-      description: 'Publish generated PRD documents and executive summaries to team Notion workspaces with live two-way synchronization.',
-      plannedCapabilities: [
-        'Export structured PRDs to designated Notion team databases',
-        'Maintain version-synced backlinks from Notion to PMPilot decisions',
-        'Two-way comments and feedback synchronization'
-      ]
-    },
-    {
-      id: 'jira',
-      name: 'Jira Software',
+      id: 'amplitude',
+      name: 'Amplitude',
       category: 'CORE',
       badge: 'COMING SOON',
-      logoText: 'J',
-      logoBg: '#0052cc',
-      tagline: 'Enterprise Atlassian sprint & epic integration',
-      description: 'Push evidence-backed requirements and user stories to Jira epics with strict human approval gates.',
+      logoText: 'AMP',
+      logoBg: '#1e61f2',
+      tagline: 'Product telemetry & retention cohort signals',
+      description: 'Ingest funnel conversion drop-off cohorts and feature retention analytics as automated telemetry signals.',
       plannedCapabilities: [
-        'Jira Cloud OAuth 2.0 multi-tenant connection',
-        'Map PMPilot recommendations into Jira Epics & User Stories',
-        'Sprint points estimation and dependency tracking'
+        'Sync checkout conversion drop-off funnels into contradiction models',
+        'Attach behavioral user cohorts as quantitative evidence signals',
+        'Automatic alert when drop-off exceeds statistical thresholds'
       ]
     },
     {
-      id: 'productboard',
-      name: 'Productboard',
-      category: 'DESIGN',
+      id: 'segment',
+      name: 'Segment',
+      category: 'CORE',
       badge: 'COMING SOON',
-      logoText: 'PB',
-      logoBg: '#1877f2',
-      tagline: 'Customer insights & feature prioritization matrix',
-      description: 'Ingest customer feedback trends and strategic themes directly into decision trade-off models.',
+      logoText: 'SEG',
+      logoBg: '#52bd95',
+      tagline: 'Customer Data Platform & live event stream',
+      description: 'Stream cross-platform user interaction events and cart checkout funnels directly into evidence pools.',
       plannedCapabilities: [
-        'Sync customer feature requests with decision evidence signals',
-        'Impact vs Effort strategic prioritization alignment',
-        'Stakeholder portal visibility on active decision roadmaps'
-      ]
-    },
-    {
-      id: 'gdrive',
-      name: 'Google Drive & Docs',
-      category: 'COLLAB',
-      badge: 'COMING SOON',
-      logoText: 'G',
-      logoBg: '#34a853',
-      tagline: 'Ingest user interview transcripts & research decks',
-      description: 'Connect shared Google Drive folders to automatically parse user research transcripts into verifiable verbatim signals.',
-      plannedCapabilities: [
-        'Ingest Google Docs interview transcripts directly into signal pool',
-        'Export decision brief slide decks to Google Slides',
-        'Selective folder access with workspace boundary isolation'
+        'Stream real-time checkout abandonment events into decision signals',
+        'Identify conflicting user behaviors across web and mobile platforms',
+        'Map user journey events to decision options'
       ]
     }
   ];
@@ -724,6 +963,39 @@ export default function IntegrationsView({ onNavigateTo }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => setIsEvidenceReviewOpen(true)}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '8px',
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              color: '#0f172a',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+          >
+            <Database size={15} color="#2563eb" />
+            <span>Evidence Repository</span>
+            {integrationsSummary?.totalImportedRecords > 0 && (
+              <span style={{
+                background: '#2563eb',
+                color: '#ffffff',
+                borderRadius: '10px',
+                padding: '1px 6px',
+                fontSize: '11px',
+                fontWeight: 700
+              }}>
+                {integrationsSummary.totalImportedRecords}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => {
               setEditingCustomItem(null);
@@ -983,43 +1255,158 @@ export default function IntegrationsView({ onNavigateTo }) {
                       {item.tagline}
                     </div>
 
-                    <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+                    <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, margin: '0 0 16px 0' }}>
                       {item.description}
                     </p>
+
+                    {/* Connected Details & Metadata */}
+                    {isConnected && (
+                      <div style={{
+                        background: '#f8fafc',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        padding: '12px',
+                        marginBottom: '16px',
+                        fontSize: '12px'
+                      }}>
+                        {item.connectedDetails && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ color: '#64748b', fontWeight: 500 }}>Connected Account:</span>
+                            <span style={{ color: '#0f172a', fontWeight: 600 }}>{item.connectedDetails}</span>
+                          </div>
+                        )}
+                        {item.importedCount !== undefined && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ color: '#64748b', fontWeight: 500 }}>Evidence Records:</span>
+                            <span style={{ color: '#047857', fontWeight: 600 }}>{item.importedCount} imported</span>
+                          </div>
+                        )}
+                        {item.lastSyncedAt && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ color: '#64748b', fontWeight: 500 }}>Last Synced:</span>
+                            <span style={{ color: '#475569' }}>{new Date(item.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        )}
+                        {item.selectedResources && Array.isArray(item.selectedResources) && item.selectedResources.length > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#64748b', fontWeight: 500 }}>Resources:</span>
+                            <span style={{
+                              color: '#334155',
+                              fontWeight: 500,
+                              background: '#e2e8f0',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '11px'
+                            }}>
+                              {item.selectedResources.length} tracked
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Action Button */}
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={item.onManage}
-                      style={{
-                        flex: 1,
-                        padding: '8px 14px',
-                        borderRadius: '6px',
-                        background: isConnected ? '#f8fafc' : '#0f172a',
-                        border: isConnected ? '1px solid #cbd5e1' : 'none',
-                        color: isConnected ? '#0f172a' : '#ffffff',
-                        fontSize: '12.5px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      {isConnected ? (
-                        <>
-                          <Check size={14} color="#059669" />
-                          <span>Configure & Test</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plug size={14} />
-                          <span>Connect</span>
-                        </>
-                      )}
-                    </button>
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {isConnected ? (
+                      <>
+                        <button
+                          onClick={item.onManage}
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            background: '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            color: '#0f172a',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '5px'
+                          }}
+                        >
+                          <Check size={13} color="#059669" />
+                          <span>Configure</span>
+                        </button>
+
+                        {item.onSyncNow && (
+                          <button
+                            onClick={item.onSyncNow}
+                            disabled={syncingProvider === item.id}
+                            title="Sync recent updates now"
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              background: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              color: '#334155',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: syncingProvider === item.id ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '5px'
+                            }}
+                          >
+                            <RotateCw
+                              size={13}
+                              style={{
+                                animation: syncingProvider === item.id ? 'spin 1s linear infinite' : 'none'
+                              }}
+                            />
+                            <span>{syncingProvider === item.id ? 'Syncing...' : 'Sync Now'}</span>
+                          </button>
+                        )}
+
+                        {item.onDisconnect && (
+                          <button
+                            onClick={item.onDisconnect}
+                            title="Disconnect integration"
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              background: '#fef2f2',
+                              border: '1px solid #fecaca',
+                              color: '#b91c1c',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <Power size={13} />
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <button
+                        onClick={item.onManage}
+                        style={{
+                          flex: 1,
+                          padding: '8px 14px',
+                          borderRadius: '6px',
+                          background: '#0f172a',
+                          border: 'none',
+                          color: '#ffffff',
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <Plug size={14} />
+                        <span>Connect</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -2013,6 +2400,38 @@ export default function IntegrationsView({ onNavigateTo }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 11. Provider Connection & Sync Wizard Modal */}
+      {activeWizard && (
+        <IntegrationWizardModal
+          provider={activeWizard.provider}
+          providerName={activeWizard.providerName}
+          logoText={activeWizard.logoText}
+          logoBg={activeWizard.logoBg}
+          workspaceId={workspaceId}
+          token={token}
+          isDemoMode={isDemoMode}
+          connection={activeWizard.connection}
+          onClose={() => setActiveWizard(null)}
+          onSuccess={() => {
+            setActiveWizard(null);
+            fetchIntegrationsSummary();
+          }}
+        />
+      )}
+
+      {/* 12. Workspace Evidence Review Modal */}
+      {isEvidenceReviewOpen && (
+        <EvidenceReviewModal
+          workspaceId={workspaceId}
+          token={token}
+          isDemoMode={isDemoMode}
+          onClose={() => setIsEvidenceReviewOpen(false)}
+          onPromoted={() => {
+            fetchIntegrationsSummary();
+          }}
+        />
       )}
 
     </div>

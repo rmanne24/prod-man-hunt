@@ -28,6 +28,13 @@ import { linearService } from "./integrations/linearService.js";
 import { switchService } from "./integrations/switchService.js";
 import { slackService } from "./integrations/slackService.js";
 import { customIntegrationService } from "./integrations/customIntegrationService.js";
+import { googleDriveService } from "./integrations/googleDriveService.js";
+import { githubService } from "./integrations/githubService.js";
+import { notionService } from "./integrations/notionService.js";
+import { jiraService } from "./integrations/jiraService.js";
+import { figmaService } from "./integrations/figmaService.js";
+import { productboardService } from "./integrations/productboardService.js";
+import { ingestionService } from "./services/ingestionService.js";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__serverDir, "../.env") });
@@ -896,6 +903,617 @@ app.post("/api/workspaces/:workspaceId/decisions/:decisionId/switch/proposals/:p
     res.json(result);
   } catch (err) {
     res.status(400).json({ success: false, error: switchService.sanitizeMessage(err.message) });
+  }
+});
+
+/* ------------------- UNIFIED INTEGRATIONS STATUS & EVIDENCE INGESTION ------------------- */
+
+// Comprehensive integrations status across all providers for workspace
+app.get("/api/workspaces/:workspaceId/integrations/summary", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const [linear, gdrive, github, notion, jira, figma, pb, slack] = await Promise.all([
+      Promise.resolve(linearService.getConnectionStatus(workspaceId)),
+      Promise.resolve(googleDriveService.getConnectionStatus(workspaceId)),
+      Promise.resolve(githubService.getConnectionStatus(workspaceId)),
+      Promise.resolve(notionService.getConnectionStatus(workspaceId)),
+      Promise.resolve(jiraService.getConnectionStatus(workspaceId)),
+      Promise.resolve(figmaService.getConnectionStatus(workspaceId)),
+      Promise.resolve(productboardService.getConnectionStatus(workspaceId)),
+      slackService.getConnectionStatus(workspaceId)
+    ]);
+
+    res.json({
+      success: true,
+      integrations: {
+        linear,
+        googleDrive: gdrive,
+        github,
+        notion,
+        jira,
+        figma,
+        productboard: pb,
+        slack
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// List imported evidence records across integrations
+app.get("/api/workspaces/:workspaceId/evidence/records", requireWorkspaceMember, (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const { provider, limit = 50, offset = 0 } = req.query;
+    const result = ingestionService.listRecords({
+      workspaceId,
+      provider: provider || null,
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10)
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Promote imported record into a Decision Signal
+app.post("/api/workspaces/:workspaceId/evidence/records/:recordId/promote", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { workspaceId, recordId } = req.params;
+    const { decisionId, category, underlyingCustomerProblem } = req.body;
+    if (!decisionId) {
+      return res.status(400).json({ success: false, error: "'decisionId' is required to attach evidence." });
+    }
+
+    const reviewedBy = req.user && !req.user.isDemo ? req.user.name : (req.body.reviewedBy || 'Human PM');
+    const result = await ingestionService.promoteRecordToDecisionSignal({
+      workspaceId,
+      recordId,
+      decisionId,
+      category,
+      underlyingCustomerProblem,
+      reviewedBy
+    });
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- GOOGLE DRIVE & DOCS INTEGRATION ROUTES ------------------- */
+
+app.get("/api/workspaces/:workspaceId/integrations/google-drive/status", requireWorkspaceMember, (req, res) => {
+  try {
+    const status = googleDriveService.getConnectionStatus(req.params.workspaceId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/google-drive/authorize-url", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const redirectUri = req.query.redirectUri || `${req.protocol}://${req.get('host')}/integrations/google-drive/callback`;
+    const result = googleDriveService.buildAuthorizeUrl({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      redirectUri
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: googleDriveService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/google-drive/callback", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { code, state, redirectUri } = req.body;
+    if (!code || !state) {
+      return res.status(400).json({ success: false, error: "Both 'code' and 'state' are required." });
+    }
+    const result = await googleDriveService.exchangeCodeAndConnect({
+      code,
+      state,
+      redirectUri: redirectUri || `${req.protocol}://${req.get('host')}/integrations/google-drive/callback`,
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: googleDriveService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/google-drive/files", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { folderId, query, mimeType } = req.query;
+    const files = await googleDriveService.listFiles({
+      workspaceId: req.params.workspaceId,
+      folderId: folderId || null,
+      query: query || '',
+      mimeType: mimeType || null
+    });
+    res.json({ success: true, files });
+  } catch (err) {
+    res.status(400).json({ success: false, error: googleDriveService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/google-drive/sync", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { selectedFiles, incremental } = req.body;
+    const result = await googleDriveService.syncSelectedDocuments({
+      workspaceId: req.params.workspaceId,
+      selectedFiles: selectedFiles || [],
+      incremental: Boolean(incremental)
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: googleDriveService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/google-drive/disconnect", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const result = await googleDriveService.disconnect(req.params.workspaceId);
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- GITHUB INTEGRATION ROUTES ------------------- */
+
+app.get("/api/workspaces/:workspaceId/integrations/github/status", requireWorkspaceMember, (req, res) => {
+  try {
+    const status = githubService.getConnectionStatus(req.params.workspaceId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/github/authorize-url", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const redirectUri = req.query.redirectUri || `${req.protocol}://${req.get('host')}/integrations/github/callback`;
+    const result = githubService.buildAuthorizeUrl({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      redirectUri
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: githubService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/github/callback", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { code, state, redirectUri } = req.body;
+    if (!code || !state) {
+      return res.status(400).json({ success: false, error: "Both 'code' and 'state' are required." });
+    }
+    const result = await githubService.exchangeCodeAndConnect({
+      code,
+      state,
+      redirectUri: redirectUri || `${req.protocol}://${req.get('host')}/integrations/github/callback`,
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: githubService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/github/connect-token", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const result = await githubService.connectWithToken({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      token
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: githubService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/github/repositories", requireWorkspaceMember, async (req, res) => {
+  try {
+    const repos = await githubService.listRepositories(req.params.workspaceId);
+    res.json({ success: true, repositories: repos });
+  } catch (err) {
+    res.status(400).json({ success: false, error: githubService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/github/sync", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { selectedRepos } = req.body;
+    const result = await githubService.syncSelectedRepositories({
+      workspaceId: req.params.workspaceId,
+      selectedRepos: selectedRepos || []
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: githubService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/github/disconnect", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const result = githubService.disconnect(req.params.workspaceId);
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- NOTION INTEGRATION ROUTES ------------------- */
+
+app.get("/api/workspaces/:workspaceId/integrations/notion/status", requireWorkspaceMember, (req, res) => {
+  try {
+    const status = notionService.getConnectionStatus(req.params.workspaceId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/notion/authorize-url", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const redirectUri = req.query.redirectUri || `${req.protocol}://${req.get('host')}/integrations/notion/callback`;
+    const result = notionService.buildAuthorizeUrl({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      redirectUri
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: notionService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/notion/callback", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { code, state, redirectUri } = req.body;
+    const result = await notionService.exchangeCodeAndConnect({
+      code,
+      state,
+      redirectUri: redirectUri || `${req.protocol}://${req.get('host')}/integrations/notion/callback`,
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: notionService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/notion/connect-token", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { token, workspaceName } = req.body;
+    const result = await notionService.connectWithToken({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      token,
+      workspaceName
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: notionService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/notion/pages", requireWorkspaceMember, async (req, res) => {
+  try {
+    const pages = await notionService.searchPages(req.params.workspaceId, req.query.query || '');
+    res.json({ success: true, pages });
+  } catch (err) {
+    res.status(400).json({ success: false, error: notionService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/notion/sync", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { selectedPages } = req.body;
+    const result = await notionService.syncSelectedPages({
+      workspaceId: req.params.workspaceId,
+      selectedPages: selectedPages || []
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: notionService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/notion/publish-prd", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { decisionId, parentPageId } = req.body;
+    if (!decisionId) {
+      return res.status(400).json({ success: false, error: "'decisionId' is required." });
+    }
+    const decision = await RedisStateManager.getRawDecision(decisionId);
+    if (!decision) throw new Error(`Decision '${decisionId}' not found.`);
+
+    const result = await notionService.publishApprovedPrd({
+      workspaceId: req.params.workspaceId,
+      decision,
+      parentPageId: parentPageId || null
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(403).json({ success: false, error: notionService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/notion/disconnect", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const result = notionService.disconnect(req.params.workspaceId);
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- JIRA SOFTWARE INTEGRATION ROUTES ------------------- */
+
+app.get("/api/workspaces/:workspaceId/integrations/jira/status", requireWorkspaceMember, (req, res) => {
+  try {
+    const status = jiraService.getConnectionStatus(req.params.workspaceId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/jira/authorize-url", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const redirectUri = req.query.redirectUri || `${req.protocol}://${req.get('host')}/integrations/jira/callback`;
+    const result = jiraService.buildAuthorizeUrl({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      redirectUri
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: jiraService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/jira/callback", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { code, state, redirectUri } = req.body;
+    const result = await jiraService.exchangeCodeAndConnect({
+      code,
+      state,
+      redirectUri: redirectUri || `${req.protocol}://${req.get('host')}/integrations/jira/callback`,
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: jiraService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/jira/connect-token", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { email, apiToken, domain } = req.body;
+    const result = await jiraService.connectWithApiToken({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      email,
+      apiToken,
+      domain
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: jiraService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/jira/projects", requireWorkspaceMember, async (req, res) => {
+  try {
+    const projects = await jiraService.listProjects(req.params.workspaceId);
+    res.json({ success: true, projects });
+  } catch (err) {
+    res.status(400).json({ success: false, error: jiraService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/jira/sync", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { selectedProjects } = req.body;
+    const result = await jiraService.syncSelectedProjects({
+      workspaceId: req.params.workspaceId,
+      selectedProjects: selectedProjects || []
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: jiraService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/jira/create-issue", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { decisionId, projectKey, issueType, summary, description } = req.body;
+    if (!decisionId || !projectKey) {
+      return res.status(400).json({ success: false, error: "Both 'decisionId' and 'projectKey' are required." });
+    }
+    const decision = await RedisStateManager.getRawDecision(decisionId);
+    if (!decision) throw new Error(`Decision '${decisionId}' not found.`);
+
+    const result = await jiraService.createApprovedIssue({
+      workspaceId: req.params.workspaceId,
+      decision,
+      projectKey,
+      issueType: issueType || 'Epic',
+      summary,
+      description
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(403).json({ success: false, error: jiraService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/jira/disconnect", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const result = jiraService.disconnect(req.params.workspaceId);
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- FIGMA INTEGRATION ROUTES ------------------- */
+
+app.get("/api/workspaces/:workspaceId/integrations/figma/status", requireWorkspaceMember, (req, res) => {
+  try {
+    const status = figmaService.getConnectionStatus(req.params.workspaceId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/figma/authorize-url", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const redirectUri = req.query.redirectUri || `${req.protocol}://${req.get('host')}/integrations/figma/callback`;
+    const result = figmaService.buildAuthorizeUrl({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      redirectUri
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: figmaService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/figma/callback", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { code, state, redirectUri } = req.body;
+    const result = await figmaService.exchangeCodeAndConnect({
+      code,
+      state,
+      redirectUri: redirectUri || `${req.protocol}://${req.get('host')}/integrations/figma/callback`,
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: figmaService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/figma/connect-token", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const result = await figmaService.connectWithToken({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      token
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: figmaService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.get("/api/workspaces/:workspaceId/integrations/figma/file-inspect", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { fileKey } = req.query;
+    if (!fileKey) {
+      return res.status(400).json({ success: false, error: "'fileKey' query parameter is required." });
+    }
+    const metadata = await figmaService.getFileMetadata({
+      workspaceId: req.params.workspaceId,
+      fileKey
+    });
+    res.json({ success: true, file: metadata });
+  } catch (err) {
+    res.status(400).json({ success: false, error: figmaService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/figma/sync", requireWorkspaceMember, async (req, res) => {
+  try {
+    const { selectedFiles } = req.body;
+    const result = await figmaService.syncSelectedFiles({
+      workspaceId: req.params.workspaceId,
+      selectedFiles: selectedFiles || []
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: figmaService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/figma/disconnect", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const result = figmaService.disconnect(req.params.workspaceId);
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- PRODUCTBOARD INTEGRATION ROUTES ------------------- */
+
+app.get("/api/workspaces/:workspaceId/integrations/productboard/status", requireWorkspaceMember, (req, res) => {
+  try {
+    const status = productboardService.getConnectionStatus(req.params.workspaceId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/productboard/connect-token", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { token, spaceName } = req.body;
+    const result = await productboardService.connectWithToken({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      token,
+      spaceName
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: productboardService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/productboard/sync", requireWorkspaceMember, async (req, res) => {
+  try {
+    const [notesRes, featsRes] = await Promise.all([
+      productboardService.syncFeedbackNotes({ workspaceId: req.params.workspaceId }),
+      productboardService.syncFeatures({ workspaceId: req.params.workspaceId })
+    ]);
+    res.json({
+      success: true,
+      importedCount: (notesRes.importedCount || 0) + (featsRes.importedCount || 0),
+      notes: notesRes.records,
+      features: featsRes.records
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: productboardService.sanitizeErrorMessage(err.message) });
+  }
+});
+
+app.post("/api/workspaces/:workspaceId/integrations/productboard/disconnect", requireWorkspaceMember, requireRealUser, (req, res) => {
+  try {
+    const result = productboardService.disconnect(req.params.workspaceId);
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
