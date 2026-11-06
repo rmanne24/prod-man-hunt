@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, RotateCcw, ShieldAlert, CheckCircle, Send, MessageSquare, X } from 'lucide-react';
+import {
+  Sparkles,
+  ArrowRight,
+  RotateCcw,
+  ShieldAlert,
+  CheckCircle,
+  Send,
+  MessageSquare,
+  X,
+  AlertTriangle,
+  Scissors,
+  ClipboardList
+} from 'lucide-react';
 
 export default function CopilotSidebar({
   decisionMemory = [],
@@ -36,11 +48,11 @@ export default function CopilotSidebar({
 
       let botReply = "Executed action.";
       if (actionType === 'challenge_decision') {
-        botReply = "⚠️ CRITICAL REVIEW: While guest checkout increases immediate conversion (+14%), drop in registered accounts requires an Apple Pay 1-click passwordless save. Additionally, a 5-product matrix will degrade mobile Safari performance by 40%.";
+        botReply = "CRITICAL REVIEW: While guest checkout increases immediate conversion (+14%), drop in registered accounts requires an Apple Pay 1-click passwordless save. Additionally, a 5-product matrix will degrade mobile Safari performance by 40%.";
       } else if (actionType === 'shrink_to_mvp') {
-        botReply = "✓ SCOPE CUT APPLIED: Deferring 5-product comparison, Klarna BNPL, and negotiation bot. Keeping guest checkout + 3-product drawer. Health confidence raised to 95%.";
+        botReply = "SCOPE CUT APPLIED: Deferring 5-product comparison, Klarna BNPL, and negotiation bot. Keeping guest checkout + 3-product drawer. Health confidence raised to 95%.";
       } else if (actionType === 'create_validation_plan') {
-        botReply = "📋 VALIDATION PLAN GENERATED: 5-day pre-sprint usability test on Figma frame 3A. Kill criteria: if conversion lift < 4% across 500 sessions, fallback to passwordless SMS OTP.";
+        botReply = "VALIDATION PLAN GENERATED: 5-day pre-sprint usability test on Figma frame 3A. Kill criteria: if conversion lift < 4% across 500 sessions, fallback to passwordless SMS OTP.";
       }
 
       setMessages(prev => [...prev, { id: `a_${Date.now()}`, role: 'assistant', text: botReply }]);
@@ -154,10 +166,14 @@ export default function CopilotSidebar({
               fontSize: '12px',
               fontWeight: 600,
               cursor: 'pointer',
-              textAlign: 'left'
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
             }}
           >
-            ⚠️ Challenge decision with counter-evidence
+            <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+            <span>Challenge decision with counter-evidence</span>
           </button>
 
           <button
@@ -172,10 +188,14 @@ export default function CopilotSidebar({
               fontSize: '12px',
               fontWeight: 600,
               cursor: 'pointer',
-              textAlign: 'left'
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
             }}
           >
-            ✂️ Shrink scope to 2-week lean MVP
+            <Scissors size={13} style={{ flexShrink: 0 }} />
+            <span>Shrink scope to 2-week lean MVP</span>
           </button>
 
           <button
@@ -190,10 +210,14 @@ export default function CopilotSidebar({
               fontSize: '12px',
               fontWeight: 600,
               cursor: 'pointer',
-              textAlign: 'left'
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
             }}
           >
-            📋 Generate pre-sprint validation plan
+            <ClipboardList size={13} style={{ flexShrink: 0 }} />
+            <span>Generate pre-sprint validation plan</span>
           </button>
         </div>
       </div>
@@ -298,24 +322,53 @@ export default function CopilotSidebar({
           gap: '8px',
           maxHeight: '220px'
         }}>
-          {messages.map(msg => (
-            <div
-              key={msg.id}
-              style={{
-                fontSize: '12px',
-                lineHeight: 1.45,
-                padding: '8px 12px',
-                borderRadius: '6px',
-                background: msg.role === 'user' ? '#0f172a' : '#f1f5f9',
-                color: msg.role === 'user' ? '#ffffff' : '#0f172a',
-                border: msg.role === 'user' ? '1px solid #0f172a' : '1px solid #e2e8f0',
-                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '90%'
-              }}
-            >
-              {msg.text}
-            </div>
-          ))}
+          {messages.map(msg => {
+            const isCritical = typeof msg.text === 'string' && msg.text.startsWith('CRITICAL REVIEW:');
+            const isScopeCut = typeof msg.text === 'string' && msg.text.startsWith('SCOPE CUT APPLIED:');
+            const isValidation = typeof msg.text === 'string' && msg.text.startsWith('VALIDATION PLAN GENERATED:');
+
+            return (
+              <div
+                key={msg.id}
+                style={{
+                  fontSize: '12px',
+                  lineHeight: 1.45,
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  background: msg.role === 'user' ? '#0f172a' : '#f1f5f9',
+                  color: msg.role === 'user' ? '#ffffff' : '#0f172a',
+                  border: msg.role === 'user' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '90%'
+                }}
+              >
+                {isCritical && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700, color: '#991b1b', marginBottom: '3px' }}>
+                    <AlertTriangle size={12} />
+                    <span>CRITICAL REVIEW</span>
+                  </div>
+                )}
+                {isScopeCut && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700, color: '#166534', marginBottom: '3px' }}>
+                    <Scissors size={12} />
+                    <span>SCOPE CUT APPLIED</span>
+                  </div>
+                )}
+                {isValidation && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700, color: '#334155', marginBottom: '3px' }}>
+                    <ClipboardList size={12} />
+                    <span>VALIDATION PLAN GENERATED</span>
+                  </div>
+                )}
+                <span>
+                  {isCritical ? msg.text.replace(/^CRITICAL REVIEW:\s*/, '') :
+                   isScopeCut ? msg.text.replace(/^SCOPE CUT APPLIED:\s*/, '') :
+                   isValidation ? msg.text.replace(/^VALIDATION PLAN GENERATED:\s*/, '') :
+                   msg.text}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Input */}

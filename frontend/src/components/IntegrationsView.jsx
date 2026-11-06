@@ -526,7 +526,10 @@ export default function IntegrationsView({ onNavigateTo }) {
         setTestResult(null);
         setActiveModal('switch');
       }
-    },
+    }
+  ];
+
+  const customIntegrationTemplates = [
     {
       id: 'custom_api',
       name: 'Custom REST API',
@@ -536,12 +539,7 @@ export default function IntegrationsView({ onNavigateTo }) {
       logoBg: '#0f172a',
       tagline: 'Connect external microservices & telemetry signals',
       description: 'Configure workspace-scoped REST endpoints with Bearer tokens, API keys, or custom headers to ingest telemetry and product evidence.',
-      status: customIntegrations.some(c => c.type === 'CUSTOM_API') ? 'CONNECTED' : 'AVAILABLE',
-      statusLabel: customIntegrations.filter(c => c.type === 'CUSTOM_API').length > 0
-        ? `${customIntegrations.filter(c => c.type === 'CUSTOM_API').length} Connected`
-        : 'Available to add',
-      isAvailable: true,
-      onManage: () => {
+      onAdd: () => {
         setEditingCustomItem(null);
         setApiForm({
           name: '',
@@ -558,19 +556,14 @@ export default function IntegrationsView({ onNavigateTo }) {
     },
     {
       id: 'custom_webhook',
-      name: 'Custom Webhook Stream',
+      name: 'Custom Webhook',
       category: 'CUSTOM',
       badge: 'EVENT STREAM',
       logoText: 'WH',
       logoBg: '#1e293b',
       tagline: 'Publish HMAC-signed decision lifecycle events',
       description: 'Stream real-time cryptographic webhook payloads to Zapier, Datadog, or downstream services on decision approval or mutation.',
-      status: customIntegrations.some(c => c.type === 'CUSTOM_WEBHOOK') ? 'CONNECTED' : 'AVAILABLE',
-      statusLabel: customIntegrations.filter(c => c.type === 'CUSTOM_WEBHOOK').length > 0
-        ? `${customIntegrations.filter(c => c.type === 'CUSTOM_WEBHOOK').length} Connected`
-        : 'Available to add',
-      isAvailable: true,
-      onManage: () => {
+      onAdd: () => {
         setEditingCustomItem(null);
         const secretCandidate = 'whsec_' + (window.crypto?.randomUUID ? window.crypto.randomUUID().replace(/-/g, '') : 'sec' + Date.now());
         setWebhookForm({
@@ -697,6 +690,16 @@ export default function IntegrationsView({ onNavigateTo }) {
     if (activeTab === 'CONNECTED') return false;
     if (activeTab === 'CUSTOM') return false;
     if (activeTab === 'ALL' || activeTab === 'COMING_SOON') return true;
+    return item.category === activeTab;
+  });
+
+  const filteredCustomTemplates = customIntegrationTemplates.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          item.description.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    if (activeTab === 'CONNECTED') return false;
+    if (activeTab === 'COMING_SOON') return false;
+    if (activeTab === 'ALL' || activeTab === 'CUSTOM') return true;
     return item.category === activeTab;
   });
 
@@ -1241,6 +1244,123 @@ export default function IntegrationsView({ onNavigateTo }) {
                   <Sparkles size={13} color="#64748b" />
                   <span>View Details & Request Access</span>
                 </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 8. Section: Add Your Own Integration (At the VERY BOTTOM below Coming Soon) */}
+      {filteredCustomTemplates.length > 0 && (
+        <div style={{ marginBottom: '36px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <div style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '6px',
+              background: '#f1f5f9',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#0f172a'
+            }}>
+              <Plus size={16} strokeWidth={2.5} />
+            </div>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+              Add Your Own Integration
+            </h2>
+          </div>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 16px 0' }}>
+            Connect your team's internal tools, APIs and services to PMPilot.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+            {filteredCustomTemplates.map(item => (
+              <div
+                key={item.id}
+                style={{
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  padding: '24px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '8px',
+                        background: item.logoBg,
+                        color: '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px',
+                        fontWeight: 700
+                      }}>
+                        {item.logoText}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                          {item.name}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                          {item.badge}
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: '#f1f5f9',
+                      color: '#475569',
+                      border: '1px solid #e2e8f0'
+                    }}>
+                      Custom Tool
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    {item.tagline}
+                  </div>
+
+                  <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+                    {item.description}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={item.onAdd}
+                    style={{
+                      flex: 1,
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      background: '#0f172a',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Add Integration</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
