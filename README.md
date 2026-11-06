@@ -1,18 +1,6 @@
 # PMPilot — Decision Intelligence Platform for Product Managers
 
-> **Evidence-grounded product decisions from customer signals to engineering delivery.**  
-> Every recommendation carries evidence provenance, contradiction detection, and version-bound human approval.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-v18%2B-green.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-18-blue.svg)](https://react.dev)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
-[![Switch AI](https://img.shields.io/badge/Fabric-Switch%20Agent%20Protocol%20v1-7c3aed.svg)](https://switchagents.ai)
-[![Linear](https://img.shields.io/badge/Delivery-Linear%20OAuth%202.0-5e6ad2.svg)](https://linear.app)
-
----
-
-## 🎯 Product Vision & Architecture
+## Product Vision & Architecture
 
 Product Managers are overwhelmed by disjointed feedback across conversations, telemetry, customer tickets, design files, and issue trackers. Generic AI chatbots hallucinate roadmaps without provenance, and teams suffer from silent contradictions and unapproved scope creep.
 
@@ -28,7 +16,7 @@ Product Managers are overwhelmed by disjointed feedback across conversations, te
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```text
  ┌────────────────────────────────────────────────────────────────────────┐
@@ -65,7 +53,7 @@ Product Managers are overwhelmed by disjointed feedback across conversations, te
 
 ---
 
-## 🔒 Security, Multi-Tenancy & Data Protection
+## Security, Multi-Tenancy & Data Protection
 
 - **Tenant Isolation**: When users register, they are provisioned a private workspace. Users can only access decisions and signals belonging to workspaces where they are members. Demo fixtures are strictly isolated.
 - **Cryptographic Password Hashing**: Passwords hashed using PBKDF2 (100,000 iterations, SHA-512, 16-byte random salts).
@@ -76,7 +64,7 @@ Product Managers are overwhelmed by disjointed feedback across conversations, te
 
 ---
 
-## 🌐 Integrations
+## Integrations
 
 ### 1. Switch AI Collaboration Fabric
 - Real Agent Protocol v1 implementation with endpoint autodetection.
@@ -91,7 +79,7 @@ Product Managers are overwhelmed by disjointed feedback across conversations, te
 
 ---
 
-## 🚀 Quickstart & Local Development
+## Quickstart & Local Development
 
 ### Prerequisites
 - Node.js (v18+)
@@ -129,7 +117,7 @@ Visit **`http://localhost:5173`** in your browser.
 
 ---
 
-## 🐳 Production Deployment
+## Production Deployment
 
 ### Option A: Docker Compose (Recommended)
 PMPilot provides a multi-stage Docker build and Docker Compose configuration:
@@ -158,7 +146,7 @@ docker run -d \
 
 ---
 
-## 🧪 Comprehensive Test Suite
+## Comprehensive Test Suite
 
 PMPilot includes 80 comprehensive automated tests covering unit logic, state machines, OAuth encryption, multi-tenant workspace isolation, and full 10-step lifecycle integration sequences.
 
