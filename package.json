@@ -2,6 +2,7 @@
   "name": "pmpilot",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "PMPilot (Associate PM) - Browser-Based Research Agent for Product Managers",
   "scripts": {
     "dev": "concurrently --kill-others \"npm run start:backend\" \"npm run start:frontend\"",

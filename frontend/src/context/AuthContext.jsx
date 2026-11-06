@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { API_BASE_URL } from '../config.js';
 
 const AuthContext = createContext(null);
 
@@ -49,7 +50,7 @@ export function AuthProvider({ children }) {
   // Fetch provider configuration from backend
   const fetchAuthConfig = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/auth/config');
+      const res = await fetch(`${API_BASE_URL}/api/auth/config`);
       if (res.ok) {
         const data = await res.json();
         setAuthConfig(data);
@@ -63,7 +64,7 @@ export function AuthProvider({ children }) {
   const fetchWorkspaces = useCallback(async (currentToken) => {
     if (!currentToken) return [];
     try {
-      const res = await fetch('http://localhost:4000/api/workspaces', {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces`, {
         headers: { 'Authorization': `Bearer ${currentToken}` }
       });
       if (res.ok) {
@@ -99,7 +100,7 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      const res = await fetch('http://localhost:4000/api/auth/me', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${currentToken}`
         }
@@ -140,7 +141,7 @@ export function AuthProvider({ children }) {
       }
 
       const redirectUri = `${window.location.origin}/`;
-      const res = await fetch('http://localhost:4000/api/auth/oidc/exchange', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/oidc/exchange`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, codeVerifier, redirectUri })
@@ -203,7 +204,7 @@ export function AuthProvider({ children }) {
         codeChallenge: challenge
       });
 
-      const res = await fetch(`http://localhost:4000/api/auth/oidc/login-url?${query.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/api/auth/oidc/login-url?${query.toString()}`);
       const data = await res.json();
 
       if (!res.ok || !data.success) {
@@ -220,7 +221,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setAuthError(null);
     try {
-      const res = await fetch('http://localhost:4000/api/auth/login', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -254,7 +255,7 @@ export function AuthProvider({ children }) {
   const register = async (email, password, name, workspaceName) => {
     setAuthError(null);
     try {
-      const res = await fetch('http://localhost:4000/api/auth/register', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name, workspaceName })
@@ -288,7 +289,7 @@ export function AuthProvider({ children }) {
   const createWorkspace = async (name) => {
     if (!token) return null;
     try {
-      const res = await fetch('http://localhost:4000/api/workspaces', {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -312,7 +313,7 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       if (token) {
-        await fetch('http://localhost:4000/api/auth/logout', {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`

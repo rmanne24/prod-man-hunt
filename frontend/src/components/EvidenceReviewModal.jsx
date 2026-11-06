@@ -10,6 +10,7 @@ import {
   Database,
   ArrowRight
 } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function EvidenceReviewModal({
   workspaceId,
@@ -43,7 +44,7 @@ export default function EvidenceReviewModal({
   const fetchRecords = async () => {
     setIsLoading(true);
     try {
-      let url = `http://localhost:4000/api/workspaces/${workspaceId}/evidence/records?limit=100`;
+      let url = `${API_BASE_URL}/api/workspaces/${workspaceId}/evidence/records?limit=100`;
       if (selectedProvider !== 'ALL') {
         url += `&provider=${selectedProvider}`;
       }
@@ -67,7 +68,7 @@ export default function EvidenceReviewModal({
   const handlePromote = async (record) => {
     setIsPromoting(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/evidence/records/${record.id}/promote`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/evidence/records/${record.id}/promote`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({

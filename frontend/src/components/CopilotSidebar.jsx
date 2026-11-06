@@ -12,6 +12,7 @@ import {
   Scissors,
   ClipboardList
 } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function CopilotSidebar({
   decisionMemory = [],
@@ -39,7 +40,7 @@ export default function CopilotSidebar({
     setMessages(prev => [...prev, { id: `u_${Date.now()}`, role: 'user', text: userPrompt }]);
 
     try {
-      const res = await fetch(`http://localhost:4000/api/session/session_moonshot_checkout/action`, {
+      const res = await fetch(`${API_BASE_URL}/api/session/session_moonshot_checkout/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: actionType })

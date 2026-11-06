@@ -13,6 +13,7 @@ import {
   Layers,
   Database
 } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function IntegrationWizardModal({
   provider,
@@ -65,19 +66,19 @@ export default function IntegrationWizardModal({
       let body = {};
 
       if (provider === 'GITHUB') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/github/connect-token`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/github/connect-token`;
         body = { token: tokenInput };
       } else if (provider === 'NOTION') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/notion/connect-token`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/notion/connect-token`;
         body = { token: tokenInput, workspaceName: secondaryInput || 'Product Workspace' };
       } else if (provider === 'JIRA') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/jira/connect-token`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/jira/connect-token`;
         body = { apiToken: tokenInput, email: secondaryInput, domain: resourceInput || 'company.atlassian.net' };
       } else if (provider === 'FIGMA') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/figma/connect-token`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/figma/connect-token`;
         body = { token: tokenInput };
       } else if (provider === 'PRODUCTBOARD') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/productboard/connect-token`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/productboard/connect-token`;
         body = { token: tokenInput, spaceName: secondaryInput || 'Productboard Space' };
       }
 
@@ -118,7 +119,7 @@ export default function IntegrationWizardModal({
 
       const redirectUri = `${window.location.origin}/`;
       const res = await fetch(
-        `http://localhost:4000/api/workspaces/${workspaceId}/integrations/${endpoint}/authorize-url?redirectUri=${encodeURIComponent(redirectUri)}`,
+        `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/${endpoint}/authorize-url?redirectUri=${encodeURIComponent(redirectUri)}`,
         { headers: getHeaders() }
       );
       const data = await res.json();
@@ -231,22 +232,22 @@ export default function IntegrationWizardModal({
       let body = {};
 
       if (provider === 'GOOGLE_DRIVE') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/google-drive/sync`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/google-drive/sync`;
         body = { selectedFiles: selectedResources, incremental: syncOptions.incremental };
       } else if (provider === 'GITHUB') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/github/sync`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/github/sync`;
         body = { selectedRepos: selectedResources };
       } else if (provider === 'NOTION') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/notion/sync`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/notion/sync`;
         body = { selectedPages: selectedResources };
       } else if (provider === 'JIRA') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/jira/sync`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/jira/sync`;
         body = { selectedProjects: selectedResources };
       } else if (provider === 'FIGMA') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/figma/sync`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/figma/sync`;
         body = { selectedFiles: selectedResources };
       } else if (provider === 'PRODUCTBOARD') {
-        endpoint = `http://localhost:4000/api/workspaces/${workspaceId}/integrations/productboard/sync`;
+        endpoint = `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/productboard/sync`;
         body = {};
       }
 

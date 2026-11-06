@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Key, Check, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function SettingsModal({ isOpen, onClose }) {
   const [openaiKey, setOpenaiKey] = useState('');
@@ -16,7 +17,7 @@ export default function SettingsModal({ isOpen, onClose }) {
     setSaveStatus('saving');
 
     try {
-      const res = await fetch('http://localhost:4000/api/hub/settings/keys', {
+      const res = await fetch(`${API_BASE_URL}/api/hub/settings/keys`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -61,9 +61,26 @@ const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
   : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4000', 'http://127.0.0.1:4000'];
 
+const isOriginAllowed = (origin) => {
+  if (!origin || allowedOrigins.includes('*')) return true;
+  return allowedOrigins.some((allowed) => {
+    if (allowed === origin) return true;
+    if (allowed.startsWith('*.') || allowed.startsWith('https://*.')) {
+      const suffix = allowed.replace(/^https?:\/\/\*\./, '').replace(/^\*\./, '');
+      try {
+        const originHost = new URL(origin).hostname;
+        return originHost === suffix || originHost.endsWith(`.${suffix}`);
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+    if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
     return callback(new Error(`CORS error: Origin ${origin} not allowed.`));

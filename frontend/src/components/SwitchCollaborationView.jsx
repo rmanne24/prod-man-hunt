@@ -13,6 +13,7 @@ import {
   Check
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { API_BASE_URL } from '../config.js';
 
 export default function SwitchCollaborationView({ session, onRefreshSession, _onNavigateTo }) {
   const { token, isDemoMode, activeWorkspace } = useAuth();
@@ -59,7 +60,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
   const fetchPreflight = useCallback(async () => {
     setIsPreflightLoading(true);
     try {
-      const res = await fetch('http://localhost:4000/api/integrations/switch/preflight');
+      const res = await fetch(`${API_BASE_URL}/api/integrations/switch/preflight`);
       if (res.ok) {
         const data = await res.json();
         setPreflight(data.preflight);
@@ -75,7 +76,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
   const fetchRoom = useCallback(async () => {
     if (!workspaceId || !decisionId) return;
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room`, {
         headers: getHeaders()
       });
       if (res.ok) {
@@ -92,7 +93,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     if (!workspaceId || !decisionId) return;
     setIsProposalsLoading(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals`, {
         headers: getHeaders()
       });
       if (res.ok) {
@@ -110,7 +111,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
   const fetchMessages = useCallback(async () => {
     if (!workspaceId || !decisionId) return;
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/messages`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/messages`, {
         headers: getHeaders()
       });
       if (res.ok) {
@@ -136,7 +137,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     setIsActionInProgress(true);
     setActionAlert(null);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room/sync`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room/sync`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -160,7 +161,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     setIsActionInProgress(true);
     setActionAlert(null);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/room`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -198,7 +199,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     setIsSendingMessage(true);
 
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/message`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/message`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
@@ -249,7 +250,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
         proposedBy: 'Security Lead & Data Analyst (via Switch)'
       };
 
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(proposalPayload)
@@ -291,7 +292,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     setActionAlert(null);
     try {
       const res = await fetch(
-        `http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals/${proposalId}/apply`,
+        `${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals/${proposalId}/apply`,
         {
           method: 'POST',
           headers: getHeaders()
@@ -324,7 +325,7 @@ export default function SwitchCollaborationView({ session, onRefreshSession, _on
     setIsActionInProgress(true);
     try {
       const res = await fetch(
-        `http://localhost:4000/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals/${proposalId}/reject`,
+        `${API_BASE_URL}/api/workspaces/${workspaceId}/decisions/${decisionId}/switch/proposals/${proposalId}/reject`,
         {
           method: 'POST',
           headers: getHeaders()

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Sparkles, Target, AlertCircle, FileText, ArrowRight } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function NewDecisionModal({ isOpen, onClose, onCreated, workspaceId, getAuthHeaders }) {
   const [title, setTitle] = useState('');
@@ -29,7 +30,7 @@ export default function NewDecisionModal({ isOpen, onClose, onCreated, workspace
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/decisions`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/decisions`, {
         method: 'POST',
         headers: getAuthHeaders ? getAuthHeaders() : { 'Content-Type': 'application/json' },
         body: JSON.stringify({

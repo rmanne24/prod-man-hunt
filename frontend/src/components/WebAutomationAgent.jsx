@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Globe, Terminal, Play, CheckCircle2, ArrowRight, Layers, ShieldCheck, Loader2 } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function WebAutomationAgent() {
   const [taskInput, setTaskInput] = useState('Inspect Stripe & Shopify Checkout Flow for Guest Conversion');
@@ -17,7 +18,7 @@ export default function WebAutomationAgent() {
 
     setIsRunning(true);
     try {
-      const res = await fetch('http://localhost:4000/api/hub/web/automate', {
+      const res = await fetch(`${API_BASE_URL}/api/hub/web/automate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task: taskInput })

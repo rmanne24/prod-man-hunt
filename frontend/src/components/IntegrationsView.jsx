@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 import IntegrationWizardModal from './IntegrationWizardModal.jsx';
 import EvidenceReviewModal from './EvidenceReviewModal.jsx';
+import { API_BASE_URL } from '../config.js';
 
 export default function IntegrationsView({ onNavigateTo }) {
   const { token, isAuthenticated, activeWorkspace, isDemoMode } = useAuth();
@@ -87,7 +88,7 @@ export default function IntegrationsView({ onNavigateTo }) {
   // 1. Fetch Linear Status
   const fetchLinearStatus = useCallback(async () => {
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/status`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/linear/status`, {
         headers: getHeaders()
       });
       if (res.ok) {
@@ -102,7 +103,7 @@ export default function IntegrationsView({ onNavigateTo }) {
   // 2. Fetch Slack Status
   const fetchSlackStatus = useCallback(async () => {
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/status`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/slack/status`, {
         headers: getHeaders()
       });
       if (res.ok) {
@@ -117,7 +118,7 @@ export default function IntegrationsView({ onNavigateTo }) {
   // 3. Fetch Switch Preflight Health
   const fetchSwitchStatus = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/integrations/switch/preflight');
+      const res = await fetch(`${API_BASE_URL}/api/integrations/switch/preflight`);
       if (res.ok) {
         const data = await res.json();
         setSwitchPreflight(data.preflight);
@@ -132,7 +133,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     if (!token && !isDemoMode) return;
     setIsLoadingCustom(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom`, {
         headers: getHeaders()
       });
       if (res.ok) {
@@ -151,7 +152,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     setIsProcessing(true);
     try {
       const redirectUri = `${window.location.origin}/`;
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/callback`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/linear/callback`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ code, state, redirectUri })
@@ -180,7 +181,7 @@ export default function IntegrationsView({ onNavigateTo }) {
   // Fetch Integrations Summary across all providers
   const fetchIntegrationsSummary = useCallback(async () => {
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/summary`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/summary`, {
         headers: getHeaders()
       });
       if (res.ok) {
@@ -210,7 +211,7 @@ export default function IntegrationsView({ onNavigateTo }) {
 
       if (!endpoint) return;
 
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/${endpoint}/sync`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/${endpoint}/sync`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ incremental: true })
@@ -245,7 +246,7 @@ export default function IntegrationsView({ onNavigateTo }) {
       else if (providerId === 'figma') endpoint = 'figma';
       else if (providerId === 'productboard') endpoint = 'productboard';
 
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/${endpoint}/disconnect`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/${endpoint}/disconnect`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -291,7 +292,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     try {
       const redirectUri = `${window.location.origin}/`;
       const res = await fetch(
-        `http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/authorize-url?redirectUri=${encodeURIComponent(redirectUri)}`,
+        `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/linear/authorize-url?redirectUri=${encodeURIComponent(redirectUri)}`,
         { headers: getHeaders() }
       );
       const data = await res.json();
@@ -311,7 +312,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     if (!confirm('Disconnect Linear integration from this workspace? Encrypted tokens will be wiped.')) return;
     setIsProcessing(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/disconnect`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/linear/disconnect`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -336,7 +337,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     setIsProcessing(true);
     setTestResult(null);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/connect`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/slack/connect`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(slackForm)
@@ -360,7 +361,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     setIsProcessing(true);
     setTestResult(null);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/test`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/slack/test`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -382,7 +383,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     if (!confirm('Disconnect Slack integration from this workspace?')) return;
     setIsProcessing(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/disconnect`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/slack/disconnect`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -427,8 +428,8 @@ export default function IntegrationsView({ onNavigateTo }) {
       };
 
       const url = editingCustomItem
-        ? `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${editingCustomItem.id}`
-        : `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom`;
+        ? `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom/${editingCustomItem.id}`
+        : `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom`;
 
       const method = editingCustomItem ? 'PUT' : 'POST';
 
@@ -471,8 +472,8 @@ export default function IntegrationsView({ onNavigateTo }) {
       };
 
       const url = editingCustomItem
-        ? `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${editingCustomItem.id}`
-        : `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom`;
+        ? `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom/${editingCustomItem.id}`
+        : `${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom`;
 
       const method = editingCustomItem ? 'PUT' : 'POST';
 
@@ -505,7 +506,7 @@ export default function IntegrationsView({ onNavigateTo }) {
     setIsProcessing(true);
     setTestResult(null);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${itemId}/test`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom/${itemId}/test`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -531,7 +532,7 @@ export default function IntegrationsView({ onNavigateTo }) {
 
   const handleToggleCustomItem = async (itemId, currentEnabled) => {
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${itemId}/toggle`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom/${itemId}/toggle`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ isEnabled: !currentEnabled })
@@ -545,7 +546,7 @@ export default function IntegrationsView({ onNavigateTo }) {
   const handleDeleteCustomItem = async (itemId, itemName) => {
     if (!confirm(`Delete custom integration "${itemName}"?`)) return;
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${itemId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${workspaceId}/integrations/custom/${itemId}`, {
         method: 'DELETE',
         headers: getHeaders()
       });

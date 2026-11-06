@@ -14,6 +14,7 @@ import {
   Clock,
   Sparkles
 } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function AtWorkHub() {
   const [activeWorkTab, setActiveWorkTab] = useState('collaboration');
@@ -32,7 +33,7 @@ export default function AtWorkHub() {
 
   const handleSendSlack = async () => {
     try {
-      await fetch('http://localhost:4000/api/hub/slack', {
+      await fetch(`${API_BASE_URL}/api/hub/slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: '#product-announcements' })
@@ -45,7 +46,7 @@ export default function AtWorkHub() {
 
   const handleSendTeams = async () => {
     try {
-      await fetch('http://localhost:4000/api/hub/teams', {
+      await fetch(`${API_BASE_URL}/api/hub/teams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: 'Product Strategy' })
@@ -58,7 +59,7 @@ export default function AtWorkHub() {
 
   const handleSendEmail = async () => {
     try {
-      await fetch('http://localhost:4000/api/hub/email', {
+      await fetch(`${API_BASE_URL}/api/hub/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: 'stakeholders@moonshot.studio' })
@@ -71,7 +72,7 @@ export default function AtWorkHub() {
 
   const handleExportNotion = async () => {
     try {
-      await fetch('http://localhost:4000/api/hub/notion', {
+      await fetch(`${API_BASE_URL}/api/hub/notion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'AI Checkout PRD v1.0' })
@@ -84,7 +85,7 @@ export default function AtWorkHub() {
 
   const handleScheduleCalendar = async () => {
     try {
-      await fetch('http://localhost:4000/api/hub/calendar', {
+      await fetch(`${API_BASE_URL}/api/hub/calendar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ experimentName: 'Guest Checkout Usability Test' })

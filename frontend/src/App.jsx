@@ -15,6 +15,7 @@ import AuthScreen from './components/AuthScreen.jsx';
 import NewDecisionModal from './components/NewDecisionModal.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Loader2, Sparkles, LogOut } from 'lucide-react';
+import { API_BASE_URL } from './config.js';
 
 const fallbackSession = {
   id: "session_moonshot_checkout",
@@ -217,7 +218,7 @@ function PMPilotWorkspace() {
 
     setIsLoadingDecisions(true);
     try {
-      const res = await fetch(`http://localhost:4000/api/workspaces/${activeWorkspace.id}/decisions`, {
+      const res = await fetch(`${API_BASE_URL}/api/workspaces/${activeWorkspace.id}/decisions`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -242,7 +243,7 @@ function PMPilotWorkspace() {
       return;
     }
     try {
-      const res = await fetch(`http://localhost:4000/api/decisions/${targetId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/decisions/${targetId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -320,7 +321,7 @@ function PMPilotWorkspace() {
   const handleResolveConflict = async (conflictId, choice) => {
     const targetDecisionId = session?.id || 'session_moonshot_checkout';
     try {
-      const res = await fetch(`http://localhost:4000/api/decisions/${targetDecisionId}/conflicts/${conflictId}/resolve`, {
+      const res = await fetch(`${API_BASE_URL}/api/decisions/${targetDecisionId}/conflicts/${conflictId}/resolve`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -351,7 +352,7 @@ function PMPilotWorkspace() {
   const handleReopenDecision = async () => {
     const targetDecisionId = session?.id || 'session_moonshot_checkout';
     try {
-      await fetch(`http://localhost:4000/api/session/${targetDecisionId}/action`, {
+      await fetch(`${API_BASE_URL}/api/session/${targetDecisionId}/action`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -373,7 +374,7 @@ function PMPilotWorkspace() {
     const callerName = user?.name ? `${user.name} (${user.email})` : 'Human PM [Demo UI]';
 
     try {
-      const res = await fetch(`http://localhost:4000/api/decisions/${targetDecisionId}/approval`, {
+      const res = await fetch(`${API_BASE_URL}/api/decisions/${targetDecisionId}/approval`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -406,7 +407,7 @@ function PMPilotWorkspace() {
     setJobProgress({ step: "Trigger.dev: Queued async job...", percent: 20 });
 
     try {
-      const res = await fetch('http://localhost:4000/api/jobs/prd', {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/prd`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({

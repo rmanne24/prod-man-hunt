@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Globe, Plus, FileText, Check } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function CaptureSourceModal({ isOpen, onClose, onSourceAdded, decisionId = 'session_moonshot_checkout', getAuthHeaders }) {
   const [sourceName, setSourceName] = useState('');
@@ -17,7 +18,7 @@ export default function CaptureSourceModal({ isOpen, onClose, onSourceAdded, dec
     setIsSaving(true);
     const headers = getAuthHeaders ? getAuthHeaders() : { 'Content-Type': 'application/json' };
     try {
-      const res = await fetch(`http://localhost:4000/api/decisions/${decisionId}/signals`, {
+      const res = await fetch(`${API_BASE_URL}/api/decisions/${decisionId}/signals`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, ExternalLink, Send, Lock, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { API_BASE_URL } from '../config.js';
 
 export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
   const [activeTab, setActiveTab] = useState('prd');
@@ -31,7 +32,7 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
     }
     setExportLinearStatus('syncing');
     try {
-      const res = await fetch('http://localhost:4000/api/export/linear', {
+      const res = await fetch(`${API_BASE_URL}/api/export/linear`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -59,7 +60,7 @@ export default function DeliveryArtifacts({ prd, session, onReopenDecision }) {
     }
     setExportSlackStatus('syncing');
     try {
-      const res = await fetch('http://localhost:4000/api/export/slack', {
+      const res = await fetch(`${API_BASE_URL}/api/export/slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
