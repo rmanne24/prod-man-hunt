@@ -32,8 +32,5 @@ COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 # Expose backend API and UI port
 EXPOSE 4000
 
-# Persist SQLite database across container restarts
-VOLUME ["/app/backend/data"]
-
 CMD ["node", "src/server.js"]
 
