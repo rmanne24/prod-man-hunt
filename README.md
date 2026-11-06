@@ -75,62 +75,100 @@ Maintain isolated workspaces with owner and member access controls, ensuring tha
 
 PMPilot follows a modular architecture built around a deterministic decision state machine.
 
-```text┌──────────────────────────────┐
-                  │       PMPilot Frontend        │
-                  │         React + Vite          │
-                  │                              │
-                  │  Dashboard | Decisions       │
-                  │  Evidence Graph              │
-                  │  Contradiction Gate           │
-                  │  Switch Collaboration        │
-                  │  Linear Backlog Sync          │
-                  └──────────────┬───────────────┘
-                                 │
-                          HTTPS / JWT
-                                 │
-                  ┌──────────────▼───────────────┐
-                  │       PMPilot Backend        │
-                  │                              │
-                  │ Authentication & RBAC        │
-                  │ Multi-Tenant Isolation       │
-                  │ Rate Limiting                │
-                  │                              │
-                  │  ┌────────────────────────┐  │
-                  │  │  Decision State Engine │  │
-                  │  │                        │  │
-                  │  │  DRAFT                 │  │
-                  │  │    ↓                   │  │
-                  │  │  CONFLICT_REVIEW       │  │
-                  │  │    ↓                   │  │
-                  │  │  RECOMMENDATION_READY  │  │
-                  │  │    ↓                   │  │
-                  │  │  AWAITING_APPROVAL     │  │
-                  │  │    ↓                   │  │
-                  │  │  APPROVED              │  │
-                  │  │    ↓                   │  │
-                  │  │  ARTIFACT_GENERATED    │  │
-                  │  └────────────────────────┘  │
-                  │                              │
-                  │  Version & Approval Guards   │
-                  └──────────────┬───────────────┘
-                                 │
-                ┌────────────────┴────────────────┐
-                │                                 │
-       ┌────────▼─────────┐             ┌─────────▼─────────┐
-       │   Switch AI      │             │      Linear       │
-       │                  │             │                   │
-       │ Agent Protocol   │             │ OAuth 2.0 PKCE    │
-       │ Decision Rooms   │             │ Approved Issues   │
-       │ Change Proposals │             │ Backlog Sync      │
-       └──────────────────┘             └───────────────────┘
 
-                  ┌──────────────────────────────┐
-                  │         SQLite               │
-                  │ Decisions | Signals          │
-                  │ Workspaces | Approvals       │
-                  │ Revoked Tokens | Integrations│
-                  └──────────────────────────────┘
+## 3. System Architecture
+
+PMPilot follows a modular architecture consisting of a React frontend, a Node.js backend, a deterministic decision engine, persistent storage, and external integrations.
+
+```mermaid
+flowchart TB
+    USER(["Product Manager / Team Member"])
+
+    subgraph FRONTEND["PMPilot Frontend"]
+        direction TB
+        UI["React + Vite Dashboard"]
+        D["Decisions Directory"]
+        E["Evidence Graph"]
+        C["Contradiction Gate"]
+        S["Switch Chat Interface"]
+        L["Linear Backlog Interface"]
+
+        UI --> D
+        UI --> E
+        UI --> C
+        UI --> S
+        UI --> L
+    end
+
+    subgraph BACKEND["PMPilot Core Backend — Node.js"]
+        direction TB
+
+        API["REST API Layer"]
+        AUTH["Authentication & RBAC"]
+        TENANT["Multi-Tenant Isolation"]
+        RATE["Rate Limiting"]
+
+        subgraph ENGINE["Deterministic Decision Engine"]
+            direction TB
+            SIGNAL["Signal Ingestion"]
+            CLASS["Epistemic Classification"]
+            CONFLICT["Contradiction Detection"]
+            STATE["Decision State Machine"]
+            VERSION["Version & Approval Guard"]
+            APPROVAL["Human Approval Gate"]
+            ARTIFACT["Artifact Generation"]
+
+            SIGNAL --> CLASS
+            CLASS --> CONFLICT
+            CONFLICT --> STATE
+            STATE --> VERSION
+            VERSION --> APPROVAL
+            APPROVAL --> ARTIFACT
+        end
+
+        API --> AUTH
+        AUTH --> TENANT
+        TENANT --> RATE
+        RATE --> SIGNAL
+    end
+
+    subgraph STORAGE["Persistent Storage"]
+        DB[("SQLite Database")]
+        DATA["Decisions • Signals • Workspaces"]
+        AUDIT["Approvals • Revoked Tokens"]
+        INTEGRATIONS["Encrypted Integration Tokens"]
+
+        DB --- DATA
+        DB --- AUDIT
+        DB --- INTEGRATIONS
+    end
+
+    subgraph EXTERNAL["External Integrations"]
+        direction TB
+        SWITCH["Switch AI Fabric"]
+        AGENT["Agent Protocol v1"]
+        LINEAR["Linear API"]
+        OAUTH["OAuth 2.0 PKCE"]
+        
+        SWITCH --- AGENT
+        LINEAR --- OAUTH
+    end
+
+    USER --> UI
+    UI <-->|"HTTPS / JWT"| API
+
+    ENGINE <--> DB
+
+    S <-->|"HTTP / SSE"| SWITCH
+    STATE --> SWITCH
+    APPROVAL -->|"Approved version only"| LINEAR
+    ARTIFACT -->|"Markdown / Documentation"| OUTPUT["Exported Artifacts"]
+
+    classDef default fill:#ffffff,stroke:#222222,color:#111111,stroke-width:1px
+    classDef database fill:#ffffff,stroke:#111111,color:#111111,stroke-width:1.5px
+    class DB database
 ```
+
 
 ### The Decision Lifecycle
 
