@@ -21,12 +21,17 @@ export class PMPilotDatabase {
   constructor(dbPath) {
     if (!dbPath) {
       const defaultDataDir = path.resolve(__dirname, '../../data');
-      if (!fs.existsSync(defaultDataDir)) {
-        fs.mkdirSync(defaultDataDir, { recursive: true });
-      }
       this.dbPath = process.env.PMPILOT_DB_PATH || path.join(defaultDataDir, 'pmpilot.db');
     } else {
       this.dbPath = dbPath;
+    }
+
+    // Ensure target directory exists for file-based SQLite databases
+    if (this.dbPath !== ':memory:') {
+      const dbDir = path.dirname(path.resolve(this.dbPath));
+      if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+      }
     }
 
     this.db = new DatabaseSync(this.dbPath);

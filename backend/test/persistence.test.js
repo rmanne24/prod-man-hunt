@@ -161,3 +161,42 @@ test('WORKSPACE AUTHORIZATION: Multi-tenant boundary isolates workspaces', async
     if (fs.existsSync(`${testDbPath}-shm`)) fs.unlinkSync(`${testDbPath}-shm`);
   } catch (_) {}
 });
+
+test('RAILWAY DEPLOYMENT: PMPILOT_DB_PATH environment variable support and nested directory auto-creation', async () => {
+  const customSubdir = path.join(os.tmpdir(), `railway_vol_${Date.now()}_${Math.random().toString(36).substring(2)}`, 'nested', 'data');
+  const customDbFile = path.join(customSubdir, 'pmpilot.db');
+
+  const prevEnv = process.env.PMPILOT_DB_PATH;
+  process.env.PMPILOT_DB_PATH = customDbFile;
+
+  try {
+    // 1. Instantiating without argument must read PMPILOT_DB_PATH and auto-create the nested directory
+    const db1 = new PMPilotDatabase();
+    assert.equal(db1.dbPath, customDbFile);
+
+    const fs = await import('node:fs');
+    assert.equal(fs.existsSync(customDbFile), true, 'SQLite database file should exist at PMPILOT_DB_PATH');
+
+    // Create a record
+    db1.createUser({ id: 'usr_railway_test', email: 'railway@team.co', name: 'Railway Admin' });
+    db1.close();
+
+    // 2. Re-instantiating must preserve existing data without resetting or recreating tables
+    const db2 = new PMPilotDatabase();
+    const user = db2.getUserByEmail('railway@team.co');
+    assert.ok(user, 'User record must be preserved on restart with PMPILOT_DB_PATH');
+    assert.equal(user.name, 'Railway Admin');
+    db2.close();
+  } finally {
+    if (prevEnv !== undefined) {
+      process.env.PMPILOT_DB_PATH = prevEnv;
+    } else {
+      delete process.env.PMPILOT_DB_PATH;
+    }
+
+    try {
+      const fs = await import('node:fs');
+      fs.rmSync(path.dirname(path.dirname(customSubdir)), { recursive: true, force: true });
+    } catch (_) {}
+  }
+});

@@ -41,6 +41,7 @@ dotenv.config({ path: path.resolve(__serverDir, "../.env") });
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Enable reverse proxy trust for accurate client IP in rate limiting & logs
 app.set('trust proxy', 1);
@@ -1719,9 +1720,9 @@ export default app;
 
 const isMainModule = process.argv[1] && (process.argv[1].endsWith("server.js") || process.argv[1].endsWith("server"));
 if (isMainModule) {
-  app.listen(PORT, () => {
-    console.log(`[PMPilot Agent Server] Running on http://localhost:${PORT}`);
-    console.log(`[Canonical Lifecycle Engine] Active on http://localhost:${PORT}/api/decisions/:id`);
+  app.listen(PORT, HOST, () => {
+    console.log(`[PMPilot Agent Server] Running on http://${HOST}:${PORT}`);
+    console.log(`[Canonical Lifecycle Engine] Active on http://${HOST}:${PORT}/api/decisions/:id`);
     runStartupPreflight();
   });
 }

@@ -4,19 +4,20 @@
 # =========================================================================
 
 # Stage 1: Build React Frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Production Engine
-FROM node:20-alpine AS runner
+# Stage 2: Production Engine (Requires Node >= 22.5.0 for native node:sqlite)
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=4000
+ENV HOST=0.0.0.0
 
 # Create persistent storage directory for SQLite
 RUN mkdir -p /app/backend/data
