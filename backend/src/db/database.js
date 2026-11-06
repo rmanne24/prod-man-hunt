@@ -181,6 +181,34 @@ export class PMPilotDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_switch_messages_room ON switch_messages(workspace_id, decision_id);
 
+      -- Custom Workspace Integrations (Custom REST APIs & Custom Webhooks)
+      CREATE TABLE IF NOT EXISTS custom_integrations (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        created_by_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        type TEXT NOT NULL,
+        url TEXT NOT NULL,
+        auth_type TEXT NOT NULL DEFAULT 'NONE',
+        auth_header_name TEXT,
+        encrypted_secret TEXT,
+        secret_iv TEXT,
+        secret_tag TEXT,
+        custom_headers TEXT,
+        events TEXT,
+        signing_secret TEXT,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        last_test_at TEXT,
+        last_test_status TEXT,
+        last_error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_custom_integrations_ws ON custom_integrations(workspace_id);
+
       -- Ensure default demo workspace exists for synthetic demo decisions
       INSERT OR IGNORE INTO workspaces (id, name, created_by, created_at)
       VALUES ('ws_moonshot', 'Moonshot Commerce Workspace', 'system', '2026-01-01T00:00:00.000Z');
@@ -302,6 +330,43 @@ export class PMPilotDatabase {
     this.stmtListIntegrationConnections = this.db.prepare(
       'SELECT id, workspace_id, provider, connected_by_user_id, provider_organization_id, provider_organization_name, scopes, status, expires_at, last_synced_at, created_at, updated_at FROM integration_connections WHERE workspace_id = ?'
     );
+    this.stmtDeleteIntegrationConnection = this.db.prepare(
+      'DELETE FROM integration_connections WHERE workspace_id = ? AND provider = ?'
+    );
+
+    // Custom Integrations
+    this.stmtInsertCustomIntegration = this.db.prepare(`
+      INSERT INTO custom_integrations (
+        id, workspace_id, created_by_user_id, name, description, type, url,
+        auth_type, auth_header_name, encrypted_secret, secret_iv, secret_tag,
+        custom_headers, events, signing_secret, is_enabled, status,
+        last_test_at, last_test_status, last_error_message, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.stmtGetCustomIntegration = this.db.prepare(`
+      SELECT * FROM custom_integrations WHERE workspace_id = ? AND id = ?
+    `);
+    this.stmtListCustomIntegrations = this.db.prepare(`
+      SELECT * FROM custom_integrations WHERE workspace_id = ? ORDER BY created_at DESC
+    `);
+    this.stmtUpdateCustomIntegration = this.db.prepare(`
+      UPDATE custom_integrations SET
+        name = ?, description = ?, url = ?, auth_type = ?, auth_header_name = ?,
+        encrypted_secret = ?, secret_iv = ?, secret_tag = ?, custom_headers = ?,
+        events = ?, signing_secret = ?, is_enabled = ?, status = ?, updated_at = ?
+      WHERE workspace_id = ? AND id = ?
+    `);
+    this.stmtDeleteCustomIntegration = this.db.prepare(`
+      DELETE FROM custom_integrations WHERE workspace_id = ? AND id = ?
+    `);
+    this.stmtToggleCustomIntegration = this.db.prepare(`
+      UPDATE custom_integrations SET is_enabled = ?, updated_at = ? WHERE workspace_id = ? AND id = ?
+    `);
+    this.stmtUpdateCustomIntegrationTest = this.db.prepare(`
+      UPDATE custom_integrations SET
+        last_test_at = ?, last_test_status = ?, last_error_message = ?, status = ?, updated_at = ?
+      WHERE workspace_id = ? AND id = ?
+    `);
 
     // Switch Rooms
     this.stmtGetSwitchRoom = this.db.prepare(`
@@ -601,6 +666,145 @@ export class PMPilotDatabase {
   listIntegrationConnections(workspaceId) {
     if (!workspaceId) return [];
     return this.stmtListIntegrationConnections.all(workspaceId) || [];
+  }
+
+  deleteIntegrationConnection(workspaceId, provider) {
+    if (!workspaceId || !provider) return false;
+    const result = this.stmtDeleteIntegrationConnection.run(workspaceId, provider);
+    return result.changes > 0;
+  }
+
+  // --- Custom Integrations Repository Methods ---
+
+  createCustomIntegration(data) {
+    const id = data.id || `cint_${data.type === 'CUSTOM_WEBHOOK' ? 'wh' : 'api'}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+    this.stmtInsertCustomIntegration.run(
+      id,
+      data.workspaceId,
+      data.userId,
+      data.name,
+      data.description || null,
+      data.type,
+      data.url,
+      data.authType || 'NONE',
+      data.authHeaderName || null,
+      data.encryptedSecret || null,
+      data.secretIv || null,
+      data.secretTag || null,
+      data.customHeaders ? JSON.stringify(data.customHeaders) : null,
+      data.events ? JSON.stringify(data.events) : null,
+      data.signingSecret || null,
+      data.isEnabled !== undefined ? (data.isEnabled ? 1 : 0) : 1,
+      data.status || 'ACTIVE',
+      data.lastTestAt || null,
+      data.lastTestStatus || null,
+      data.lastErrorMessage || null,
+      now,
+      now
+    );
+    return this.getCustomIntegration(data.workspaceId, id);
+  }
+
+  getCustomIntegration(workspaceId, id) {
+    if (!workspaceId || !id) return null;
+    const row = this.stmtGetCustomIntegration.get(workspaceId, id);
+    if (!row) return null;
+    return this._formatCustomIntegrationRow(row);
+  }
+
+  listCustomIntegrations(workspaceId) {
+    if (!workspaceId) return [];
+    const rows = this.stmtListCustomIntegrations.all(workspaceId) || [];
+    return rows.map(r => this._formatCustomIntegrationRow(r));
+  }
+
+  updateCustomIntegration(workspaceId, id, data) {
+    const existing = this.stmtGetCustomIntegration.get(workspaceId, id);
+    if (!existing) return null;
+    const now = new Date().toISOString();
+
+    const name = data.name !== undefined ? data.name : existing.name;
+    const description = data.description !== undefined ? data.description : existing.description;
+    const url = data.url !== undefined ? data.url : existing.url;
+    const authType = data.authType !== undefined ? data.authType : existing.auth_type;
+    const authHeaderName = data.authHeaderName !== undefined ? data.authHeaderName : existing.auth_header_name;
+    const encryptedSecret = data.encryptedSecret !== undefined ? data.encryptedSecret : existing.encrypted_secret;
+    const secretIv = data.secretIv !== undefined ? data.secretIv : existing.secret_iv;
+    const secretTag = data.secretTag !== undefined ? data.secretTag : existing.secret_tag;
+    const customHeaders = data.customHeaders !== undefined ? JSON.stringify(data.customHeaders) : existing.custom_headers;
+    const events = data.events !== undefined ? JSON.stringify(data.events) : existing.events;
+    const signingSecret = data.signingSecret !== undefined ? data.signingSecret : existing.signing_secret;
+    const isEnabled = data.isEnabled !== undefined ? (data.isEnabled ? 1 : 0) : existing.is_enabled;
+    const status = data.status !== undefined ? data.status : existing.status;
+
+    this.stmtUpdateCustomIntegration.run(
+      name, description, url, authType, authHeaderName,
+      encryptedSecret, secretIv, secretTag, customHeaders,
+      events, signingSecret, isEnabled, status, now,
+      workspaceId, id
+    );
+
+    return this.getCustomIntegration(workspaceId, id);
+  }
+
+  deleteCustomIntegration(workspaceId, id) {
+    if (!workspaceId || !id) return false;
+    const result = this.stmtDeleteCustomIntegration.run(workspaceId, id);
+    return result.changes > 0;
+  }
+
+  toggleCustomIntegration(workspaceId, id, isEnabled) {
+    const now = new Date().toISOString();
+    this.stmtToggleCustomIntegration.run(isEnabled ? 1 : 0, now, workspaceId, id);
+    return this.getCustomIntegration(workspaceId, id);
+  }
+
+  recordCustomIntegrationTest(workspaceId, id, { status, lastErrorMessage, testStatus }) {
+    const now = new Date().toISOString();
+    this.stmtUpdateCustomIntegrationTest.run(
+      now, testStatus || 'SUCCESS', lastErrorMessage || null, status || 'ACTIVE', now,
+      workspaceId, id
+    );
+    return this.getCustomIntegration(workspaceId, id);
+  }
+
+  _formatCustomIntegrationRow(row) {
+    if (!row) return null;
+    let customHeaders = {};
+    let events = [];
+    try {
+      if (row.custom_headers) customHeaders = JSON.parse(row.custom_headers);
+    } catch (_) {}
+    try {
+      if (row.events) events = JSON.parse(row.events);
+    } catch (_) {}
+
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      createdById: row.created_by_user_id,
+      name: row.name,
+      description: row.description,
+      type: row.type,
+      url: row.url,
+      authType: row.auth_type,
+      authHeaderName: row.auth_header_name,
+      hasSecret: Boolean(row.encrypted_secret),
+      encryptedSecret: row.encrypted_secret,
+      secretIv: row.secret_iv,
+      secretTag: row.secret_tag,
+      customHeaders,
+      events,
+      signingSecret: row.signing_secret,
+      isEnabled: Boolean(row.is_enabled),
+      status: row.status,
+      lastTestAt: row.last_test_at,
+      lastTestStatus: row.last_test_status,
+      lastErrorMessage: row.last_error_message,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
   }
 
   // --- Switch AI Collaboration Repository Methods ---

@@ -1,23 +1,84 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle2, Info, ExternalLink, Shield, Plug, Unplug, Check, AlertTriangle, MessageSquare } from 'lucide-react';
+import {
+  Plug,
+  ExternalLink,
+  Plus,
+  Trash2,
+  Search,
+  Check,
+  Eye,
+  EyeOff,
+  Power,
+  Sparkles
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function IntegrationsView({ onNavigateTo }) {
-  const { token, isAuthenticated, activeWorkspace } = useAuth();
+  const { token, isAuthenticated, activeWorkspace, isDemoMode } = useAuth();
   const workspaceId = activeWorkspace?.id || 'ws_moonshot';
-  const [hubStatus, setHubStatus] = useState(null);
-  const [authConfig, setAuthConfig] = useState(null);
-  const [linearStatus, setLinearStatus] = useState(null);
-  const [switchPreflight, setSwitchPreflight] = useState(null);
-  const [selectedIntegration, setSelectedIntegration] = useState(null);
-  const [actionMessage, setActionMessage] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
 
+  // State: Core Integrations
+  const [linearStatus, setLinearStatus] = useState(null);
+  const [slackStatus, setSlackStatus] = useState(null);
+  const [switchPreflight, setSwitchPreflight] = useState(null);
+
+  // State: Custom Integrations
+  const [customIntegrations, setCustomIntegrations] = useState([]);
+
+  // State: UI & Modals
+  const [activeTab, setActiveTab] = useState('ALL'); // ALL, CORE, COLLAB, DESIGN, CUSTOM, COMING_SOON
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeModal, setActiveModal] = useState(null); // 'linear', 'slack', 'switch', 'custom_api', 'custom_webhook', 'coming_soon'
+  const [selectedComingSoon, setSelectedComingSoon] = useState(null);
+  const [editingCustomItem, setEditingCustomItem] = useState(null);
+
+  // State: Actions & Feedback
+  const [actionAlert, setActionAlert] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  // Form State: Slack
+  const [slackForm, setSlackForm] = useState({
+    webhookUrl: '',
+    channel: '#product-announcements',
+    teamName: 'Product Team Slack'
+  });
+
+  // Form State: Custom API
+  const [apiForm, setApiForm] = useState({
+    name: '',
+    description: '',
+    url: '',
+    authType: 'BEARER',
+    authHeaderName: 'X-API-Key',
+    secret: '',
+    customHeaders: ''
+  });
+  const [showApiSecret, setShowApiSecret] = useState(false);
+
+  // Form State: Custom Webhook
+  const [webhookForm, setWebhookForm] = useState({
+    name: '',
+    description: '',
+    url: '',
+    events: ['decision.approved', 'proposal.accepted'],
+    signingSecret: ''
+  });
+
+  const getHeaders = useCallback(() => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (isDemoMode) headers['X-PMPilot-Demo'] = 'true';
+    if (workspaceId) headers['X-Workspace-Id'] = workspaceId;
+    return headers;
+  }, [token, isDemoMode, workspaceId]);
+
+  // 1. Fetch Linear Status
   const fetchLinearStatus = useCallback(async () => {
     try {
-      const headers = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/status`, { headers });
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/status`, {
+        headers: getHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setLinearStatus(data);
@@ -25,63 +86,92 @@ export default function IntegrationsView({ onNavigateTo }) {
     } catch (err) {
       console.warn('Could not fetch Linear status:', err.message);
     }
-  }, [token, workspaceId]);
+  }, [workspaceId, getHeaders]);
 
-  // Handle incoming Linear OAuth callback
+  // 2. Fetch Slack Status
+  const fetchSlackStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/status`, {
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSlackStatus(data);
+      }
+    } catch (err) {
+      console.warn('Could not fetch Slack status:', err.message);
+    }
+  }, [workspaceId, getHeaders]);
+
+  // 3. Fetch Switch Preflight Health
+  const fetchSwitchStatus = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:4000/api/integrations/switch/preflight');
+      if (res.ok) {
+        const data = await res.json();
+        setSwitchPreflight(data.preflight);
+      }
+    } catch (err) {
+      console.warn('Could not fetch Switch status:', err.message);
+    }
+  }, []);
+
+  // 4. Fetch Custom Integrations
+  const fetchCustomIntegrations = useCallback(async () => {
+    if (!token && !isDemoMode) return;
+    setIsLoadingCustom(true);
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom`, {
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCustomIntegrations(data.integrations || []);
+      }
+    } catch (err) {
+      console.warn('Could not fetch custom integrations:', err.message);
+    } finally {
+      setIsLoadingCustom(false);
+    }
+  }, [workspaceId, token, isDemoMode, getHeaders]);
+
+  // Handlers: Linear
   const handleLinearCallback = useCallback(async (code, state) => {
     setIsProcessing(true);
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
       const redirectUri = `${window.location.origin}/`;
       const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/callback`, {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ code, state, redirectUri })
       });
-
       const data = await res.json();
       if (res.ok && data.success) {
-        setActionMessage({
+        setActionAlert({
           type: 'success',
           text: `Successfully connected Linear to workspace (${data.connection?.organizationName || 'Linear Org'})!`
         });
         fetchLinearStatus();
       } else {
-        setActionMessage({
+        setActionAlert({
           type: 'error',
-          text: `Linear OAuth failed: ${data.error || 'Server rejected exchange'}`
+          text: `Linear OAuth failed: ${data.error || 'Server rejected token exchange.'}`
         });
       }
     } catch (err) {
-      setActionMessage({
-        type: 'error',
-        text: `Linear callback network error: ${err.message}`
-      });
+      setActionAlert({ type: 'error', text: `Linear network error: ${err.message}` });
     } finally {
       setIsProcessing(false);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [token, workspaceId, fetchLinearStatus]);
+  }, [workspaceId, getHeaders, fetchLinearStatus]);
 
+  // Initial load
   useEffect(() => {
-    fetch('http://localhost:4000/api/hub/status')
-      .then(res => res.json())
-      .then(data => { if (data.success) setHubStatus(data); })
-      .catch(err => console.warn('Could not fetch hub status:', err.message));
-
-    fetch('http://localhost:4000/api/auth/config')
-      .then(res => res.json())
-      .then(data => { if (data.success) setAuthConfig(data); })
-      .catch(err => console.warn('Could not fetch auth config:', err.message));
-
-    fetch('http://localhost:4000/api/integrations/switch/preflight')
-      .then(res => res.json())
-      .then(data => { if (data.success) setSwitchPreflight(data.preflight); })
-      .catch(err => console.warn('Could not fetch switch preflight:', err.message));
-
     fetchLinearStatus();
+    fetchSlackStatus();
+    fetchSwitchStatus();
+    fetchCustomIntegrations();
 
     // Check if returning from Linear OAuth callback
     const urlParams = new URLSearchParams(window.location.search);
@@ -92,257 +182,590 @@ export default function IntegrationsView({ onNavigateTo }) {
     if (code && state && !hasAuth0Verifier) {
       handleLinearCallback(code, state);
     }
-  }, [fetchLinearStatus, handleLinearCallback]);
+  }, [fetchLinearStatus, fetchSlackStatus, fetchSwitchStatus, fetchCustomIntegrations, handleLinearCallback]);
 
   const handleConnectLinear = async () => {
-    setActionMessage(null);
-    if (!linearStatus?.configured) {
-      setSelectedIntegration({ id: 'linear_setup' });
+    if (!isAuthenticated && !isDemoMode) {
+      setActionAlert({ type: 'error', text: 'Please sign in to connect workspace integrations.' });
       return;
     }
-
-    if (!isAuthenticated) {
-      setActionMessage({
-        type: 'error',
-        text: 'Please sign in with a verified PM account before connecting workspace integrations.'
-      });
-      return;
-    }
-
+    setIsProcessing(true);
     try {
-      setIsProcessing(true);
       const redirectUri = `${window.location.origin}/`;
       const res = await fetch(
         `http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/authorize-url?redirectUri=${encodeURIComponent(redirectUri)}`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        { headers: getHeaders() }
       );
-
       const data = await res.json();
       if (res.ok && data.success && data.url) {
         window.location.href = data.url;
       } else {
-        setActionMessage({
-          type: 'error',
-          text: data.error || 'Could not initiate Linear authorization.'
-        });
+        setActionAlert({ type: 'error', text: data.error || 'Could not initiate Linear authorization.' });
       }
     } catch (err) {
-      setActionMessage({
-        type: 'error',
-        text: `Network error: ${err.message}`
-      });
+      setActionAlert({ type: 'error', text: `Linear authorization error: ${err.message}` });
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleDisconnectLinear = async () => {
-    if (!confirm('Disconnect Linear integration from this workspace? Stored encrypted tokens will be deleted.')) {
-      return;
-    }
-
+    if (!confirm('Disconnect Linear integration from this workspace? Encrypted tokens will be wiped.')) return;
+    setIsProcessing(true);
     try {
-      setIsProcessing(true);
       const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/linear/disconnect`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: getHeaders()
       });
-
       const data = await res.json();
       if (res.ok && data.success) {
-        setActionMessage({
-          type: 'success',
-          text: 'Linear integration disconnected and tokens purged from database.'
-        });
+        setActionAlert({ type: 'success', text: 'Linear integration disconnected.' });
         fetchLinearStatus();
+        setActiveModal(null);
       } else {
-        setActionMessage({
-          type: 'error',
-          text: data.error || 'Failed to disconnect.'
-        });
+        setActionAlert({ type: 'error', text: data.error || 'Failed to disconnect Linear.' });
       }
     } catch (err) {
-      setActionMessage({
-        type: 'error',
-        text: `Network error: ${err.message}`
-      });
+      setActionAlert({ type: 'error', text: err.message });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const apiKeys = hubStatus?.apiKeysStatus || {};
-  const isLinearConnected = Boolean(linearStatus?.connected);
+  // --- Handlers: Slack ---
+  const handleConnectSlack = async (e) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/connect`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(slackForm)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setActionAlert({ type: 'success', text: 'Slack webhook successfully verified and connected!' });
+        fetchSlackStatus();
+        setActiveModal(null);
+      } else {
+        setActionAlert({ type: 'error', text: data.error || 'Failed to connect Slack.' });
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: err.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-  const integrations = [
+  const handleTestSlack = async () => {
+    setIsProcessing(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/test`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestResult({ success: true, message: data.message || 'Test notification delivered to Slack!' });
+        fetchSlackStatus();
+      } else {
+        setTestResult({ success: false, error: data.error || 'Slack test failed.' });
+      }
+    } catch (err) {
+      setTestResult({ success: false, error: err.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDisconnectSlack = async () => {
+    if (!confirm('Disconnect Slack integration from this workspace?')) return;
+    setIsProcessing(true);
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/slack/disconnect`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setActionAlert({ type: 'success', text: 'Slack integration disconnected.' });
+        fetchSlackStatus();
+        setActiveModal(null);
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: err.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // --- Handlers: Custom Integrations ---
+  const handleSaveCustomApi = async (e) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    try {
+      let customHeadersObj = {};
+      if (apiForm.customHeaders.trim()) {
+        try {
+          customHeadersObj = JSON.parse(apiForm.customHeaders);
+        } catch {
+          alert('Custom headers must be a valid JSON object.');
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      const payload = {
+        name: apiForm.name,
+        description: apiForm.description,
+        type: 'CUSTOM_API',
+        url: apiForm.url,
+        authType: apiForm.authType,
+        authHeaderName: apiForm.authHeaderName,
+        secret: apiForm.secret,
+        customHeaders: customHeadersObj
+      };
+
+      const url = editingCustomItem
+        ? `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${editingCustomItem.id}`
+        : `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom`;
+
+      const method = editingCustomItem ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setActionAlert({
+          type: 'success',
+          text: `Custom API "${data.integration.name}" successfully ${editingCustomItem ? 'updated' : 'configured'}!`
+        });
+        fetchCustomIntegrations();
+        setActiveModal(null);
+        setEditingCustomItem(null);
+      } else {
+        setActionAlert({ type: 'error', text: data.error || 'Failed to save Custom API integration.' });
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: err.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSaveCustomWebhook = async (e) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    try {
+      const payload = {
+        name: webhookForm.name,
+        description: webhookForm.description,
+        type: 'CUSTOM_WEBHOOK',
+        url: webhookForm.url,
+        events: webhookForm.events,
+        signingSecret: webhookForm.signingSecret
+      };
+
+      const url = editingCustomItem
+        ? `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${editingCustomItem.id}`
+        : `http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom`;
+
+      const method = editingCustomItem ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setActionAlert({
+          type: 'success',
+          text: `Custom Webhook "${data.integration.name}" successfully ${editingCustomItem ? 'updated' : 'configured'}!`
+        });
+        fetchCustomIntegrations();
+        setActiveModal(null);
+        setEditingCustomItem(null);
+      } else {
+        setActionAlert({ type: 'error', text: data.error || 'Failed to save Custom Webhook.' });
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: err.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleTestCustomItem = async (itemId) => {
+    setIsProcessing(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${itemId}/test`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestResult({
+          success: true,
+          message: `Endpoint verified (HTTP ${data.result.httpStatus} ${data.result.statusText}) in ${data.result.durationMs}ms.`
+        });
+        fetchCustomIntegrations();
+      } else {
+        setTestResult({
+          success: false,
+          error: data.error || data.result?.error || 'Integration test failed.'
+        });
+      }
+    } catch (err) {
+      setTestResult({ success: false, error: err.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleToggleCustomItem = async (itemId, currentEnabled) => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${itemId}/toggle`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ isEnabled: !currentEnabled })
+      });
+      if (res.ok) fetchCustomIntegrations();
+    } catch (err) {
+      console.warn('Toggle failed:', err.message);
+    }
+  };
+
+  const handleDeleteCustomItem = async (itemId, itemName) => {
+    if (!confirm(`Delete custom integration "${itemName}"?`)) return;
+    try {
+      const res = await fetch(`http://localhost:4000/api/workspaces/${workspaceId}/integrations/custom/${itemId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        setActionAlert({ type: 'success', text: `Deleted custom integration "${itemName}".` });
+        fetchCustomIntegrations();
+      }
+    } catch (err) {
+      setActionAlert({ type: 'error', text: err.message });
+    }
+  };
+
+  // --- Integration Catalog Definition ---
+  const isLinearConnected = Boolean(linearStatus?.connected);
+  const isSlackConnected = Boolean(slackStatus?.connected);
+  const isSwitchConnected = switchPreflight?.status === 'CONNECTED';
+
+  const coreIntegrations = [
     {
       id: 'linear',
       name: 'Linear',
-      mode: 'Downstream Delivery',
-      status: isLinearConnected ? 'CONNECTED' : linearStatus?.configured ? 'READY_TO_CONNECT' : 'DEMO_ADAPTER',
-      statusLabel: isLinearConnected
-        ? `Connected (${linearStatus.connection?.organizationName || 'Linear Org'})`
-        : linearStatus?.configured
-          ? 'Ready to Connect'
-          : 'Demo Mode (OAuth Unconfigured)',
-      statusColor: isLinearConnected ? '#047857' : linearStatus?.configured ? '#2563eb' : '#0369a1',
-      bgColor: isLinearConnected ? '#ecfdf5' : linearStatus?.configured ? '#eff6ff' : '#f0f9ff',
-      borderColor: isLinearConnected ? '#a7f3d0' : linearStatus?.configured ? '#bfdbfe' : '#bae6fd',
-      iconText: 'L',
-      description: 'Downstream sprint ticket generation and epic linking. Exports require version-bound human PM approval.',
-      configKey: 'LINEAR_CLIENT_ID & LINEAR_CLIENT_SECRET & INTEGRATION_ENCRYPTION_KEY',
-      isLiveConnected: isLinearConnected,
-      lastSync: isLinearConnected
-        ? `Synced ${linearStatus.connection?.lastSyncedAt ? new Date(linearStatus.connection.lastSyncedAt).toLocaleTimeString() : 'Active'}`
-        : 'Guarded mock delivery adapter',
-      badge: 'DELIVERY'
+      category: 'CORE',
+      badge: 'DELIVERY',
+      logoText: 'L',
+      logoBg: '#5e6ad2',
+      tagline: 'Downstream issue tracking & engineering epic delivery',
+      description: 'Export version-approved decision specifications directly to Linear issues, sub-issues, and engineering epics with human PM gates.',
+      status: isLinearConnected ? 'CONNECTED' : (linearStatus?.configured ? 'NOT_CONNECTED' : 'CONFIG_REQUIRED'),
+      statusLabel: isLinearConnected ? 'Connected' : (linearStatus?.configured ? 'Not connected' : 'Configuration required'),
+      connectedDetails: isLinearConnected ? linearStatus.connection?.organizationName : null,
+      isAvailable: true,
+      onManage: () => {
+        setTestResult(null);
+        setActiveModal('linear');
+      }
     },
     {
       id: 'slack',
       name: 'Slack',
-      mode: 'Notifications',
-      status: apiKeys.slackWebhook ? 'CONNECTED' : 'DEMO_ADAPTER',
-      statusLabel: apiKeys.slackWebhook ? 'Live Webhook' : 'Demo Adapter (Webhook Unconfigured)',
-      statusColor: apiKeys.slackWebhook ? '#047857' : '#0369a1',
-      bgColor: apiKeys.slackWebhook ? '#ecfdf5' : '#f0f9ff',
-      borderColor: apiKeys.slackWebhook ? '#a7f3d0' : '#bae6fd',
-      iconText: 'S',
-      description: 'Broadcasts green-lit decision records and executive PRD digests to #product-announcements.',
-      configKey: 'SLACK_WEBHOOK_URL',
-      isLiveConnected: Boolean(apiKeys.slackWebhook),
-      lastSync: 'Guarded mock delivery adapter',
-      badge: 'NOTIFICATIONS'
-    },
-    {
-      id: 'auth0',
-      name: 'Auth0 Identity (OIDC)',
-      mode: 'Enterprise SSO',
-      status: authConfig?.auth0?.isConfigured ? 'CONNECTED' : 'UNCONFIGURED',
-      statusLabel: authConfig?.auth0?.isConfigured ? 'OIDC SSO Active' : 'Unconfigured (Local SQLite Active)',
-      statusColor: authConfig?.auth0?.isConfigured ? '#047857' : '#b45309',
-      bgColor: authConfig?.auth0?.isConfigured ? '#ecfdf5' : '#fef3c7',
-      borderColor: authConfig?.auth0?.isConfigured ? '#a7f3d0' : '#fde68a',
-      iconText: 'A0',
-      description: 'Authorization Code flow with PKCE and RS256 token validation against Auth0 JWKS endpoint.',
-      configKey: 'AUTH0_DOMAIN & AUTH0_CLIENT_ID',
-      isLiveConnected: Boolean(authConfig?.auth0?.isConfigured),
-      lastSync: authConfig?.auth0?.isConfigured ? 'OIDC Discovery Ready' : 'Local cryptographic persistent store',
-      badge: 'AUTHENTICATION'
-    },
-    {
-      id: 'trigger',
-      name: 'Trigger.dev',
-      mode: 'Async Runner',
-      status: 'LOCAL_FALLBACK',
-      statusLabel: 'Local In-Memory Runner',
-      statusColor: '#475569',
-      bgColor: '#f8fafc',
-      borderColor: '#e2e8f0',
-      iconText: 'T',
-      description: 'Background async job dispatcher running the multi-agent PRD generation and validation pipeline.',
-      configKey: 'TRIGGER_SECRET_KEY',
-      isLiveConnected: false,
-      lastSync: 'Deterministic in-memory runner',
-      badge: 'BACKGROUND JOBS'
-    },
-    {
-      id: 'exa',
-      name: 'Exa AI',
-      mode: 'Competitor Search',
-      status: apiKeys.exa ? 'CONNECTED' : 'MOCK_ENGINE',
-      statusLabel: apiKeys.exa ? 'Live API Active' : 'Evaluator Mock Data',
-      statusColor: apiKeys.exa ? '#047857' : '#475569',
-      bgColor: apiKeys.exa ? '#ecfdf5' : '#f8fafc',
-      borderColor: apiKeys.exa ? '#a7f3d0' : '#e2e8f0',
-      iconText: 'E',
-      description: 'Neural search engine powering real-time competitor feature matrix benchmarks and market data.',
-      configKey: 'EXA_API_KEY',
-      isLiveConnected: Boolean(apiKeys.exa),
-      lastSync: 'Competitor comparison fixture',
-      badge: 'MARKET RESEARCH'
+      category: 'COLLAB',
+      badge: 'DISCUSSIONS',
+      logoText: '#',
+      logoBg: '#4a154b',
+      tagline: 'Team decision broadcasts & asynchronous feedback',
+      description: 'Notify product channels when decisions reach approval, broadcast contradictions, and collect stakeholder feedback.',
+      status: isSlackConnected ? 'CONNECTED' : 'NOT_CONNECTED',
+      statusLabel: isSlackConnected ? 'Connected' : 'Not connected',
+      connectedDetails: isSlackConnected ? `${slackStatus.connection?.organizationName} (${slackStatus.connection?.channel})` : null,
+      isAvailable: true,
+      onManage: () => {
+        setTestResult(null);
+        if (isSlackConnected) {
+          setSlackForm({
+            webhookUrl: '',
+            channel: slackStatus.connection?.channel || '#product-announcements',
+            teamName: slackStatus.connection?.organizationName || 'Slack Workspace'
+          });
+        }
+        setActiveModal('slack');
+      }
     },
     {
       id: 'switch',
       name: 'Switch AI Collaboration',
-      mode: 'Agent Protocol v1',
-      status: switchPreflight?.status || 'UNCONFIGURED',
-      statusLabel: switchPreflight?.status === 'CONNECTED'
-        ? 'Connected & Reachable'
-        : switchPreflight?.status === 'CONFIGURED'
-          ? 'Reachable (Server Online)'
-          : switchPreflight?.status === 'UNREACHABLE'
-            ? 'Server Unreachable (Offline)'
-            : 'Unconfigured (Local Server)',
-      statusColor: switchPreflight?.status === 'CONNECTED' ? '#047857' : switchPreflight?.reachable ? '#0284c7' : switchPreflight?.status === 'UNREACHABLE' ? '#b91c1c' : '#b45309',
-      bgColor: switchPreflight?.status === 'CONNECTED' ? '#ecfdf5' : switchPreflight?.reachable ? '#f0f9ff' : switchPreflight?.status === 'UNREACHABLE' ? '#fef2f2' : '#fef3c7',
-      borderColor: switchPreflight?.status === 'CONNECTED' ? '#a7f3d0' : switchPreflight?.reachable ? '#bae6fd' : switchPreflight?.status === 'UNREACHABLE' ? '#fecaca' : '#fde68a',
-      iconText: 'SW',
-      description: 'Official Switch Agent Protocol v1. Connects decisions to live Switch chat rooms, syncs safe decision context, and drafts version-bound proposals for human PM review.',
-      configKey: 'SWITCH_SERVER_URL & SWITCH_REGISTRATION_TOKEN',
-      isLiveConnected: switchPreflight?.status === 'CONNECTED',
-      lastSync: switchPreflight?.reachable ? 'HTTP Operations + SSE / WebSocket Stream' : 'Switch server probe failed or not running',
-      badge: 'OFFICIAL SPONSOR'
+      category: 'COLLAB',
+      badge: 'OFFICIAL SPONSOR',
+      logoText: 'SW',
+      logoBg: '#0f766e',
+      tagline: 'Live Switch rooms & structured proposal drafts',
+      description: 'Sync canonical decision context into collaborative Switch agent rooms and merge version-bound proposals with PM approval.',
+      status: isSwitchConnected ? 'CONNECTED' : (switchPreflight?.reachable ? 'NOT_CONNECTED' : 'OFFLINE'),
+      statusLabel: isSwitchConnected ? 'Connected' : (switchPreflight?.reachable ? 'Reachable (Server Online)' : 'Server unreachable (Optional)'),
+      connectedDetails: isSwitchConnected ? 'Protocol v1 Ready' : null,
+      isAvailable: true,
+      onManage: () => {
+        setTestResult(null);
+        setActiveModal('switch');
+      }
+    },
+    {
+      id: 'custom_api',
+      name: 'Custom REST API',
+      category: 'CUSTOM',
+      badge: 'DEVELOPER API',
+      logoText: 'API',
+      logoBg: '#0f172a',
+      tagline: 'Connect external microservices & telemetry signals',
+      description: 'Configure workspace-scoped REST endpoints with Bearer tokens, API keys, or custom headers to ingest telemetry and product evidence.',
+      status: customIntegrations.some(c => c.type === 'CUSTOM_API') ? 'CONNECTED' : 'AVAILABLE',
+      statusLabel: customIntegrations.filter(c => c.type === 'CUSTOM_API').length > 0
+        ? `${customIntegrations.filter(c => c.type === 'CUSTOM_API').length} Connected`
+        : 'Available to add',
+      isAvailable: true,
+      onManage: () => {
+        setEditingCustomItem(null);
+        setApiForm({
+          name: '',
+          description: '',
+          url: '',
+          authType: 'BEARER',
+          authHeaderName: 'X-API-Key',
+          secret: '',
+          customHeaders: ''
+        });
+        setTestResult(null);
+        setActiveModal('custom_api');
+      }
+    },
+    {
+      id: 'custom_webhook',
+      name: 'Custom Webhook Stream',
+      category: 'CUSTOM',
+      badge: 'EVENT STREAM',
+      logoText: 'WH',
+      logoBg: '#1e293b',
+      tagline: 'Publish HMAC-signed decision lifecycle events',
+      description: 'Stream real-time cryptographic webhook payloads to Zapier, Datadog, or downstream services on decision approval or mutation.',
+      status: customIntegrations.some(c => c.type === 'CUSTOM_WEBHOOK') ? 'CONNECTED' : 'AVAILABLE',
+      statusLabel: customIntegrations.filter(c => c.type === 'CUSTOM_WEBHOOK').length > 0
+        ? `${customIntegrations.filter(c => c.type === 'CUSTOM_WEBHOOK').length} Connected`
+        : 'Available to add',
+      isAvailable: true,
+      onManage: () => {
+        setEditingCustomItem(null);
+        const secretCandidate = 'whsec_' + (window.crypto?.randomUUID ? window.crypto.randomUUID().replace(/-/g, '') : 'sec' + Date.now());
+        setWebhookForm({
+          name: '',
+          description: '',
+          url: '',
+          events: ['decision.approved', 'proposal.accepted'],
+          signingSecret: secretCandidate
+        });
+        setTestResult(null);
+        setActiveModal('custom_webhook');
+      }
     }
   ];
 
-  const liveConnectedCount = integrations.filter(i => i.isLiveConnected).length;
-  const adapterCount = integrations.filter(i => !i.isLiveConnected && i.status !== 'PLANNED').length;
+  const comingSoonIntegrations = [
+    {
+      id: 'github',
+      name: 'GitHub',
+      category: 'CORE',
+      badge: 'COMING SOON',
+      logoText: 'GH',
+      logoBg: '#24292e',
+      tagline: 'Link architectural decisions to Pull Requests & Issues',
+      description: 'Bi-directionally track PR status, commit hashes, and codebase diffs against canonical decision specifications.',
+      plannedCapabilities: [
+        'Associate pull requests directly with approved decisions',
+        'Automatic issue labeling based on decision product area',
+        'Check-run gate blocking code merge if decision approval relocks'
+      ]
+    },
+    {
+      id: 'figma',
+      name: 'Figma',
+      category: 'DESIGN',
+      badge: 'COMING SOON',
+      logoText: 'F',
+      logoBg: '#f24e1e',
+      tagline: 'Anchor design frame annotations to evidence graphs',
+      description: 'Import vector canvas frame metadata and usability test prototype recordings into decision contradiction graphs.',
+      plannedCapabilities: [
+        'Live Figma frame preview inside Decision Overview',
+        'Extract design constraints directly into contradiction matrix',
+        'Notify designers when PM approves UX specification changes'
+      ]
+    },
+    {
+      id: 'notion',
+      name: 'Notion',
+      category: 'COLLAB',
+      badge: 'COMING SOON',
+      logoText: 'N',
+      logoBg: '#000000',
+      tagline: 'Bi-directional PRD & documentation knowledge sync',
+      description: 'Publish generated PRD documents and executive summaries to team Notion workspaces with live two-way synchronization.',
+      plannedCapabilities: [
+        'Export structured PRDs to designated Notion team databases',
+        'Maintain version-synced backlinks from Notion to PMPilot decisions',
+        'Two-way comments and feedback synchronization'
+      ]
+    },
+    {
+      id: 'jira',
+      name: 'Jira Software',
+      category: 'CORE',
+      badge: 'COMING SOON',
+      logoText: 'J',
+      logoBg: '#0052cc',
+      tagline: 'Enterprise Atlassian sprint & epic integration',
+      description: 'Push evidence-backed requirements and user stories to Jira epics with strict human approval gates.',
+      plannedCapabilities: [
+        'Jira Cloud OAuth 2.0 multi-tenant connection',
+        'Map PMPilot recommendations into Jira Epics & User Stories',
+        'Sprint points estimation and dependency tracking'
+      ]
+    },
+    {
+      id: 'productboard',
+      name: 'Productboard',
+      category: 'DESIGN',
+      badge: 'COMING SOON',
+      logoText: 'PB',
+      logoBg: '#1877f2',
+      tagline: 'Customer insights & feature prioritization matrix',
+      description: 'Ingest customer feedback trends and strategic themes directly into decision trade-off models.',
+      plannedCapabilities: [
+        'Sync customer feature requests with decision evidence signals',
+        'Impact vs Effort strategic prioritization alignment',
+        'Stakeholder portal visibility on active decision roadmaps'
+      ]
+    },
+    {
+      id: 'gdrive',
+      name: 'Google Drive & Docs',
+      category: 'COLLAB',
+      badge: 'COMING SOON',
+      logoText: 'G',
+      logoBg: '#34a853',
+      tagline: 'Ingest user interview transcripts & research decks',
+      description: 'Connect shared Google Drive folders to automatically parse user research transcripts into verifiable verbatim signals.',
+      plannedCapabilities: [
+        'Ingest Google Docs interview transcripts directly into signal pool',
+        'Export decision brief slide decks to Google Slides',
+        'Selective folder access with workspace boundary isolation'
+      ]
+    }
+  ];
+
+  // Filter logic
+  const filteredCore = coreIntegrations.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          item.description.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    if (activeTab === 'ALL') return true;
+    if (activeTab === 'CONNECTED') return item.status === 'CONNECTED';
+    if (activeTab === 'CUSTOM') return item.category === 'CUSTOM';
+    return item.category === activeTab;
+  });
+
+  const filteredComingSoon = comingSoonIntegrations.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          item.description.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    if (activeTab === 'CONNECTED') return false;
+    if (activeTab === 'CUSTOM') return false;
+    if (activeTab === 'ALL' || activeTab === 'COMING_SOON') return true;
+    return item.category === activeTab;
+  });
+
+  const connectedList = coreIntegrations.filter(i => i.status === 'CONNECTED');
+  const totalConnectedCount = connectedList.length + customIntegrations.length;
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div style={{ padding: '32px 40px', maxWidth: '1280px', margin: '0 auto', width: '100%', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      
+      {/* 1. Header & Actions */}
+      <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-            Integrations & Service Connections
+            Workspace: {activeWorkspace?.name || 'My Workspace'}
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            Connected Tools & APIs
+          <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+            Integrations
           </h1>
           <p style={{ fontSize: '14px', color: '#64748b', marginTop: '6px', marginBottom: 0 }}>
-            Inspect connection health, OAuth credentials, and downstream ticket dispatch destinations.
+            Connect your team's tools to PMPilot. Export specifications to project delivery tools and stream decision events.
           </p>
         </div>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '6px 14px',
-          borderRadius: '6px',
-          background: liveConnectedCount > 0 ? '#ecfdf5' : '#f8fafc',
-          border: `1px solid ${liveConnectedCount > 0 ? '#a7f3d0' : '#e2e8f0'}`,
-          fontSize: '12px',
-          fontWeight: 600,
-          color: liveConnectedCount > 0 ? '#047857' : '#475569'
-        }}>
-          {liveConnectedCount > 0 ? (
-            <CheckCircle2 size={14} color="#059669" />
-          ) : (
-            <Info size={14} color="#64748b" />
-          )}
-          <span>{liveConnectedCount} External Services Connected · {adapterCount} Evaluator Adapters</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => {
+              setEditingCustomItem(null);
+              setApiForm({ name: '', description: '', url: '', authType: 'BEARER', authHeaderName: 'X-API-Key', secret: '', customHeaders: '' });
+              setTestResult(null);
+              setActiveModal('custom_api');
+            }}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '8px',
+              background: '#0f172a',
+              border: 'none',
+              color: '#ffffff',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+          >
+            <Plus size={15} />
+            <span>Add Custom Integration</span>
+          </button>
         </div>
       </div>
 
-      {/* Action Notification Banner */}
-      {actionMessage && (
+      {/* 2. Notification Banner */}
+      {actionAlert && (
         <div style={{
           padding: '12px 16px',
           borderRadius: '8px',
           marginBottom: '20px',
-          background: actionMessage.type === 'success' ? '#ecfdf5' : '#fef2f2',
-          border: `1px solid ${actionMessage.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
-          color: actionMessage.type === 'success' ? '#065f46' : '#991b1b',
+          background: actionAlert.type === 'success' ? '#ecfdf5' : '#fef2f2',
+          border: `1px solid ${actionAlert.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+          color: actionAlert.type === 'success' ? '#065f46' : '#991b1b',
           fontSize: '13px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <span>{actionMessage.text}</span>
+          <span>{actionAlert.text}</span>
           <button
-            type="button"
-            onClick={() => setActionMessage(null)}
+            onClick={() => setActionAlert(null)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontWeight: 700 }}
           >
             ✕
@@ -350,449 +773,1189 @@ export default function IntegrationsView({ onNavigateTo }) {
         </div>
       )}
 
-      {/* Honest Status Callout */}
+      {/* 3. Search & Category Filters */}
       <div style={{
-        padding: '14px 18px',
-        borderRadius: '8px',
-        background: '#f8fafc',
-        border: '1px solid #e2e8f0',
-        marginBottom: '24px',
         display: 'flex',
-        alignItems: 'flex-start',
-        gap: '12px'
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '16px',
+        marginBottom: '28px',
+        flexWrap: 'wrap'
       }}>
-        <Shield size={18} color="#0f172a" style={{ flexShrink: 0, marginTop: '2px' }} />
-        <div style={{ fontSize: '12.5px', color: '#475569', lineHeight: 1.5 }}>
-          <strong style={{ color: '#0f172a' }}>Connection Transparency & OAuth Safeguards:</strong>
-          <br />
-          No external app is displayed as connected unless genuine credentials or OAuth tokens have been verified.
-          Linear tokens are encrypted with <strong>AES-256-GCM</strong> using a dedicated encryption key.
-          Downstream Linear and Slack exports require explicit human PM approval at the active decision version before any issue creation dispatch.
+        {/* Category Pills */}
+        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+          {[
+            { id: 'ALL', label: 'All Integrations' },
+            { id: 'CONNECTED', label: `Connected (${totalConnectedCount})` },
+            { id: 'CORE', label: 'Project Delivery' },
+            { id: 'COLLAB', label: 'Collaboration' },
+            { id: 'DESIGN', label: 'Design & Research' },
+            { id: 'CUSTOM', label: `Custom APIs & Webhooks (${customIntegrations.length})` },
+            { id: 'COMING_SOON', label: 'Coming Soon' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                border: activeTab === tab.id ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                background: activeTab === tab.id ? '#0f172a' : '#ffffff',
+                color: activeTab === tab.id ? '#ffffff' : '#64748b',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search Bar */}
+        <div style={{ position: 'relative', minWidth: '240px' }}>
+          <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            type="text"
+            placeholder="Search integrations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '7px 12px 7px 32px',
+              borderRadius: '8px',
+              border: '1px solid #cbd5e1',
+              fontSize: '13px',
+              outline: 'none',
+              background: '#ffffff'
+            }}
+          />
         </div>
       </div>
 
-      {/* Integrations Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-        gap: '20px',
-        marginBottom: '28px'
-      }}>
-        {integrations.map((item) => (
-          <div
-            key={item.id}
-            style={{
-              background: '#ffffff',
-              borderRadius: '12px',
-              border: '1px solid #e2e8f0',
-              padding: '24px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}
-          >
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* 4. Section: Connected Integrations (Highlights active tools) */}
+      {activeTab !== 'COMING_SOON' && totalConnectedCount > 0 && searchQuery === '' && (
+        <div style={{ marginBottom: '36px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+              Connected Integrations
+            </h2>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '12px' }}>
+              {totalConnectedCount} Active
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' }}>
+            {connectedList.map(item => (
+              <div
+                key={item.id}
+                style={{
+                  background: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #a7f3d0',
+                  padding: '18px 20px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{
-                    width: '36px',
-                    height: '36px',
+                    width: '38px',
+                    height: '38px',
                     borderRadius: '8px',
-                    background: '#0f172a',
+                    background: item.logoBg,
                     color: '#ffffff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '13px',
+                    fontSize: '14px',
                     fontWeight: 700
                   }}>
-                    {item.iconText}
+                    {item.logoText}
                   </div>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-                        {item.name}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>{item.name}</span>
+                      <span style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', background: '#ecfdf5', padding: '2px 6px', borderRadius: '4px' }}>
+                        ✓ Connected
                       </span>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>
-                      {item.badge}
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                      {item.connectedDetails || 'Active connection'}
                     </div>
                   </div>
                 </div>
 
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  background: item.bgColor,
-                  color: item.statusColor,
-                  border: `1px solid ${item.borderColor}`
-                }}>
-                  {item.statusLabel}
-                </span>
+                <button
+                  onClick={item.onManage}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    color: '#0f172a',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Configure
+                </button>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-              <p style={{ fontSize: '13px', color: '#475569', lineHeight: 1.5, marginBottom: '16px' }}>
-                {item.description}
-              </p>
-            </div>
+      {/* 5. Section: Available Core Integrations */}
+      {filteredCore.length > 0 && (
+        <div style={{ marginBottom: '36px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 16px 0', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+            Available Integrations
+          </h2>
 
-            <div>
-              {item.id === 'linear' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
-                  {isLinearConnected ? (
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <div style={{
-                        flex: 1,
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        background: '#ecfdf5',
-                        border: '1px solid #a7f3d0',
-                        fontSize: '12px',
-                        color: '#065f46',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}>
-                        <Check size={14} color="#059669" />
-                        <span>Connected to {linearStatus.connection?.organizationName}</span>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={isProcessing}
-                        onClick={handleDisconnectLinear}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: '6px',
-                          background: '#ffffff',
-                          border: '1px solid #fecaca',
-                          color: '#dc2626',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <Unplug size={13} />
-                        <span>Disconnect</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        type="button"
-                        disabled={isProcessing}
-                        onClick={handleConnectLinear}
-                        style={{
-                          flex: 1,
-                          padding: '8px 12px',
-                          borderRadius: '6px',
-                          background: linearStatus?.configured ? '#0f172a' : '#f1f5f9',
-                          border: `1px solid ${linearStatus?.configured ? '#0f172a' : '#cbd5e1'}`,
-                          color: linearStatus?.configured ? '#ffffff' : '#475569',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+            {filteredCore.map(item => {
+              const isConnected = item.status === 'CONNECTED';
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '12px',
+                    border: isConnected ? '1px solid #a7f3d0' : '1px solid #e2e8f0',
+                    padding: '24px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <div>
+                    {/* Top Row: Logo, Name, Status Badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '8px',
+                          background: item.logoBg,
+                          color: '#ffffff',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <Plug size={13} />
-                        <span>{linearStatus?.configured ? 'Connect Linear (OAuth 2.0)' : 'Connect Linear (Setup Required)'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedIntegration({ id: 'linear_arch' })}
-                        title="View Architecture Details"
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          background: '#ffffff',
-                          border: '1px solid #cbd5e1',
-                          color: '#64748b',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <ExternalLink size={13} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                          fontSize: '14px',
+                          fontWeight: 700
+                        }}>
+                          {item.logoText}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                            {item.name}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                            {item.badge}
+                          </div>
+                        </div>
+                      </div>
 
-              {item.id === 'switch' && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        background: isConnected ? '#ecfdf5' : '#f1f5f9',
+                        color: isConnected ? '#047857' : '#475569',
+                        border: `1px solid ${isConnected ? '#a7f3d0' : '#e2e8f0'}`
+                      }}>
+                        {item.statusLabel}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      {item.tagline}
+                    </div>
+
+                    <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+                      {item.description}
+                    </p>
+                  </div>
+
+                  {/* Action Button */}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={item.onManage}
+                      style={{
+                        flex: 1,
+                        padding: '8px 14px',
+                        borderRadius: '6px',
+                        background: isConnected ? '#f8fafc' : '#0f172a',
+                        border: isConnected ? '1px solid #cbd5e1' : 'none',
+                        color: isConnected ? '#0f172a' : '#ffffff',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      {isConnected ? (
+                        <>
+                          <Check size={14} color="#059669" />
+                          <span>Configure & Test</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plug size={14} />
+                          <span>Connect</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 6. Section: Custom Workspace Integrations List (APIs & Webhooks) */}
+      {customIntegrations.length > 0 && activeTab !== 'COMING_SOON' && (
+        <div style={{ marginBottom: '36px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+              Your Custom Integrations ({customIntegrations.length})
+            </h2>
+          </div>
+
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '10px',
+            border: '1px solid #e2e8f0',
+            overflow: 'hidden',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '12px' }}>
+                  <th style={{ padding: '12px 18px', fontWeight: 600 }}>NAME & TYPE</th>
+                  <th style={{ padding: '12px 18px', fontWeight: 600 }}>TARGET URL</th>
+                  <th style={{ padding: '12px 18px', fontWeight: 600 }}>AUTH / SIGNING</th>
+                  <th style={{ padding: '12px 18px', fontWeight: 600 }}>STATUS</th>
+                  <th style={{ padding: '12px 18px', fontWeight: 600 }}>LAST TEST</th>
+                  <th style={{ padding: '12px 18px', fontWeight: 600, textAlign: 'right' }}>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customIntegrations.map(c => (
+                  <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '14px 18px' }}>
+                      <div style={{ fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                        {c.type === 'CUSTOM_API' ? 'REST API Endpoint' : 'Outbound Webhook'}
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 18px', color: '#475569', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <code>{c.url}</code>
+                    </td>
+                    <td style={{ padding: '14px 18px', color: '#64748b' }}>
+                      {c.type === 'CUSTOM_API' ? (
+                        <span>{c.authType} {c.hasSecret && '(Encrypted)'}</span>
+                      ) : (
+                        <span>HMAC-SHA256</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '14px 18px' }}>
+                      <span style={{
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        background: c.isEnabled ? (c.status === 'ERROR' ? '#fef2f2' : '#ecfdf5') : '#f1f5f9',
+                        color: c.isEnabled ? (c.status === 'ERROR' ? '#dc2626' : '#059669') : '#64748b'
+                      }}>
+                        {c.isEnabled ? (c.status === 'ERROR' ? 'Error' : 'Active') : 'Disabled'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 18px', fontSize: '12px', color: '#64748b' }}>
+                      {c.lastTestAt ? new Date(c.lastTestAt).toLocaleTimeString() : 'Not tested'}
+                    </td>
+                    <td style={{ padding: '14px 18px', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                        <button
+                          onClick={() => handleTestCustomItem(c.id)}
+                          title="Run safe test probe"
+                          disabled={isProcessing}
+                          style={{
+                            padding: '5px 9px',
+                            borderRadius: '4px',
+                            background: '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            color: '#0f172a',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Test
+                        </button>
+                        <button
+                          onClick={() => handleToggleCustomItem(c.id, c.isEnabled)}
+                          title={c.isEnabled ? 'Disable' : 'Enable'}
+                          style={{
+                            padding: '5px 8px',
+                            borderRadius: '4px',
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            color: c.isEnabled ? '#059669' : '#94a3b8',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Power size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCustomItem(c.id, c.name)}
+                          title="Delete integration"
+                          style={{
+                            padding: '5px 8px',
+                            borderRadius: '4px',
+                            background: '#ffffff',
+                            border: '1px solid #fecaca',
+                            color: '#dc2626',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Section: Coming Soon Integrations */}
+      {filteredComingSoon.length > 0 && (
+        <div style={{ marginBottom: '36px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+              Coming Soon
+            </h2>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px' }}>
+              Planned Roadmap
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+            {filteredComingSoon.map(item => (
+              <div
+                key={item.id}
+                style={{
+                  background: '#fafbfc',
+                  borderRadius: '12px',
+                  border: '1px dashed #cbd5e1',
+                  padding: '24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '8px',
+                        background: item.logoBg,
+                        color: '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px',
+                        fontWeight: 700
+                      }}>
+                        {item.logoText}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                          {item.name}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                          {item.badge}
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: '#f1f5f9',
+                      color: '#64748b',
+                      border: '1px solid #e2e8f0'
+                    }}>
+                      In Development
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                    {item.tagline}
+                  </div>
+
+                  <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+                    {item.description}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setSelectedComingSoon(item);
+                    setActiveModal('coming_soon');
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    color: '#475569',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Sparkles size={13} color="#64748b" />
+                  <span>View Details & Request Access</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODALS */}
+      {/* ========================================================================= */}
+
+      {/* A. LINEAR SETUP MODAL */}
+      {activeModal === 'linear' && (
+        <div style={modalBackdropStyle}>
+          <div style={modalBoxStyle}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#5e6ad2', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>L</div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Linear Integration Setup</h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={closeButtonStyle}>✕</button>
+            </div>
+
+            <div style={{ padding: '24px' }}>
+              <p style={{ fontSize: '13.5px', color: '#475569', lineHeight: 1.5, marginTop: 0 }}>
+                Linear connects your decision intelligence pipeline to development tickets. Once approved by a human PM, decision records export directly into Linear issues and sub-issues.
+              </p>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Connection Status:</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: isLinearConnected ? '#059669' : '#b45309' }}>
+                    {isLinearConnected ? `Connected (${linearStatus.connection?.organizationName})` : 'Not Connected'}
+                  </span>
+                </div>
+                {isLinearConnected && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>Authorized Scopes:</span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a' }}>read, write, issues:create</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>Encryption:</span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a' }}>AES-256-GCM (Dedicated Key)</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {isLinearConnected ? (
+                <div style={{ display: 'flex', gap: '10px' }}>
                   <button
-                    type="button"
-                    onClick={() => {
-                      if (onNavigateTo) onNavigateTo('switch');
-                    }}
+                    onClick={handleDisconnectLinear}
+                    disabled={isProcessing}
                     style={{
                       flex: 1,
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      background: '#4338ca',
-                      border: '1px solid #4338ca',
-                      color: '#ffffff',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <MessageSquare size={13} />
-                    <span>Open Collaboration Room</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedIntegration({ id: 'switch_specs' })}
-                    title="View Switch Protocol Specs"
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: '6px',
+                      padding: '10px',
+                      borderRadius: '8px',
                       background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      color: '#64748b',
+                      border: '1px solid #fecaca',
+                      color: '#dc2626',
+                      fontWeight: 600,
+                      fontSize: '13px',
                       cursor: 'pointer'
                     }}
                   >
-                    <ExternalLink size={13} />
+                    Disconnect Linear
+                  </button>
+                  <button
+                    onClick={() => setActiveModal(null)}
+                    style={{ flex: 1, padding: '10px', borderRadius: '8px', background: '#0f172a', border: 'none', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+                  >
+                    Done
                   </button>
                 </div>
+              ) : (
+                <button
+                  onClick={handleConnectLinear}
+                  disabled={isProcessing}
+                  style={{
+                    width: '100%',
+                    padding: '11px',
+                    borderRadius: '8px',
+                    background: '#5e6ad2',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <ExternalLink size={15} />
+                  <span>Authorize with Linear (OAuth 2.0)</span>
+                </button>
               )}
-
-              <div style={{
-                paddingTop: '12px',
-                borderTop: '1px solid #f1f5f9',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                fontSize: '11.5px',
-                color: '#64748b'
-              }}>
-                <div>
-                  <code>{item.configKey}</code>
-                </div>
-                <div>
-                  {item.lastSync}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Modal: Linear Setup Requirements or Architecture Details */}
-      {selectedIntegration && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(15, 23, 42, 0.4)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-          zIndex: 999
-        }}>
-          <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
-            border: '1px solid #e2e8f0',
-            maxWidth: '560px',
-            width: '100%',
-            padding: '24px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
-                  {selectedIntegration.id === 'linear_setup'
-                    ? 'Linear OAuth 2.0 Setup Guide'
-                    : selectedIntegration.id === 'switch_specs'
-                      ? 'Switch Agent Protocol Architecture'
-                      : 'Linear Integration Architecture'}
-                </h3>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  {selectedIntegration.id === 'linear_setup'
-                    ? 'Required environment variables to connect live Linear workspace'
-                    : selectedIntegration.id === 'switch_specs'
-                      ? 'Official Switch wire contracts, safe context briefings, and version-bound proposals'
-                      : 'AES-256-GCM token vault, PKCE state verification, and guarded issue creation'}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedIntegration(null)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '18px',
-                  color: '#64748b',
-                  cursor: 'pointer'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {selectedIntegration.id === 'linear_setup' ? (
-              <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: '#fef3c7', borderRadius: '6px', border: '1px solid #fde68a', color: '#92400e', fontSize: '12px' }}>
-                  <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                  <span>Linear OAuth credentials are not configured in your backend environment.</span>
-                </div>
-
-                {/* Preflight Variable Checklist */}
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 14px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
-                    Environment Preflight Status
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
-                    {[
-                      { name: 'LINEAR_CLIENT_ID', label: 'Linear Client ID' },
-                      { name: 'LINEAR_CLIENT_SECRET', label: 'Linear Client Secret' },
-                      { name: 'INTEGRATION_ENCRYPTION_KEY', label: 'Token Key (64 hex characters / 32 bytes)' }
-                    ].map(item => {
-                      const v = linearStatus?.preflight?.variables?.[item.name];
-                      const isValid = Boolean(v?.valid);
-                      const isPresent = Boolean(v?.present);
-                      return (
-                        <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <code style={{ fontSize: '11px', color: '#0f172a', fontWeight: 600 }}>{item.name}</code>
-                            <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>({item.label})</span>
-                          </div>
-                          <span style={{
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            background: isValid ? '#dcfce7' : isPresent ? '#fee2e2' : '#f1f5f9',
-                            color: isValid ? '#15803d' : isPresent ? '#b91c1c' : '#64748b'
-                          }}>
-                            {isValid ? 'VALID' : isPresent ? 'MALFORMED' : 'MISSING'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <p style={{ margin: 0 }}>
-                  To enable genuine live Linear issue creation, register an OAuth application in the <strong>Linear Developer Settings</strong> and configure these variables in <code>backend/.env</code>:
-                </p>
-
-                <pre style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  padding: '12px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  color: '#0f172a',
-                  overflowX: 'auto',
-                  margin: 0
-                }}>
-{`LINEAR_CLIENT_ID=your-linear-client-id
-LINEAR_CLIENT_SECRET=your-linear-client-secret
-INTEGRATION_ENCRYPTION_KEY=64-char-hex-string-for-aes-256-gcm`}
-                </pre>
-
-                <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
-                  In your Linear Application settings, register this Redirect URI:
-                  <br />
-                  <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', color: '#0f172a' }}>
-                    {typeof window !== 'undefined' ? `${window.location.origin}/` : 'http://127.0.0.1:5173/'}
-                  </code>
-                </div>
-              </div>
-            ) : selectedIntegration.id === 'switch_specs' ? (
-              <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: '#0f172a' }}>1. Official Wire Protocol:</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Follows Switch Agent Protocol v1: <code>POST /agents</code> for registration, <code>POST /agents/{'{agent_id}'}/ops/create_room</code> for synchronous room creation, <code>POST /agents/{'{agent_id}'}/message</code> for messaging, and SSE / WebSocket streams for events.
-                  </p>
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: '#0f172a' }}>2. Safe Context Briefing & Redaction:</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Internal API tokens, secrets, encryption keys, and private hashes are strictly stripped before context is broadcast to the Switch room.
-                  </p>
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: '#0f172a' }}>3. Decision-Version Bound Proposals:</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Proposals from Switch discussions are bound to <code>decision.version</code>. If the decision changes before review, older proposals are rejected as <code>STALE</code>.
-                  </p>
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: '#0f172a' }}>4. Human PM Gate & Linear Lock:</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Switch agents cannot self-merge changes. A human PM must explicitly click <em>Accept & Merge</em>, which increments the decision version, invalidates prior approvals, and re-locks downstream Linear export.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: '#0f172a' }}>1. Scope & Tenant Isolation:</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Connections are scoped to <code>workspace_id</code> in SQLite (<code>integration_connections</code>). One active connection per workspace, managed by verified PMs.
-                  </p>
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: '#0f172a' }}>2. AES-256-GCM Token Encryption:</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Tokens are encrypted using <strong>AES-256-GCM</strong> with unique 96-bit IVs and 128-bit authentication tags per token. Tokens are never exposed to client-side storage.
-                  </p>
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: '#0f172a' }}>3. Guarded Delivery Export:</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Downstream issue creation is strictly locked until explicit human PM approval is committed for the active decision version. Rechecked immediately before dispatch.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => setSelectedIntegration(null)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  background: '#0f172a',
-                  color: '#ffffff',
-                  border: 'none',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* B. SLACK SETUP MODAL */}
+      {activeModal === 'slack' && (
+        <div style={modalBackdropStyle}>
+          <div style={modalBoxStyle}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#4a154b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>#</div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Slack Workspace Connection</h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={closeButtonStyle}>✕</button>
+            </div>
+
+            <form onSubmit={handleConnectSlack} style={{ padding: '24px' }}>
+              <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, marginTop: 0 }}>
+                Connect your team's Slack channel via Incoming Webhook. Approved decisions and executive PRD digests will broadcast directly to this channel.
+              </p>
+
+              {testResult && (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  marginBottom: '16px',
+                  background: testResult.success ? '#ecfdf5' : '#fef2f2',
+                  border: `1px solid ${testResult.success ? '#a7f3d0' : '#fecaca'}`,
+                  color: testResult.success ? '#065f46' : '#991b1b',
+                  fontSize: '12.5px'
+                }}>
+                  {testResult.message || testResult.error}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={labelStyle}>
+                  Incoming Webhook URL <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://hooks.slack.com/services/T.../B.../..."
+                  value={slackForm.webhookUrl}
+                  onChange={(e) => setSlackForm({ ...slackForm, webhookUrl: e.target.value })}
+                  style={inputStyle}
+                />
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>
+                  Encrypted at rest using AES-256-GCM. Never exposed in frontend responses.
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div>
+                  <label style={labelStyle}>Target Channel</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="#product-announcements"
+                    value={slackForm.channel}
+                    onChange={(e) => setSlackForm({ ...slackForm, channel: e.target.value })}
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Team / Workspace Name</label>
+                  <input
+                    type="text"
+                    placeholder="Acme Product Slack"
+                    value={slackForm.teamName}
+                    onChange={(e) => setSlackForm({ ...slackForm, teamName: e.target.value })}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {isSlackConnected && (
+                  <button
+                    type="button"
+                    onClick={handleTestSlack}
+                    disabled={isProcessing}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Send Test Ping
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  style={{
+                    flex: 1,
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    background: '#0f172a',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {isProcessing ? 'Verifying & Saving...' : (isSlackConnected ? 'Update Connection' : 'Verify & Connect Slack')}
+                </button>
+
+                {isSlackConnected && (
+                  <button
+                    type="button"
+                    onClick={handleDisconnectSlack}
+                    disabled={isProcessing}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      border: '1px solid #fecaca',
+                      color: '#dc2626',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* C. SWITCH COLLABORATION MODAL */}
+      {activeModal === 'switch' && (
+        <div style={modalBackdropStyle}>
+          <div style={modalBoxStyle}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#0f766e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>SW</div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Switch AI Collaboration</h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={closeButtonStyle}>✕</button>
+            </div>
+
+            <div style={{ padding: '24px' }}>
+              <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, marginTop: 0 }}>
+                Switch is our hackathon sponsor AI collaboration platform. PMPilot connects decision contexts to live Switch rooms and turns room discussions into version-bound proposals for PM approval.
+              </p>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Server URL:</span>
+                  <code style={{ fontSize: '12px', color: '#0f172a' }}>{switchPreflight?.serverUrl || 'http://localhost:8000'}</code>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Health Probe:</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: switchPreflight?.reachable ? '#059669' : '#dc2626' }}>
+                    {switchPreflight?.reachable ? 'Online (GET /health 200)' : 'Offline / Unreachable'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Agent Protocol:</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a' }}>Official Wire Protocol v1</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchSwitchStatus();
+                    alert('Switch health probe executed.');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    color: '#0f172a',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Re-Probe Server
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveModal(null);
+                    if (onNavigateTo) onNavigateTo('switch');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#0f766e',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Open Collaboration Room
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* D. CUSTOM API MODAL */}
+      {activeModal === 'custom_api' && (
+        <div style={modalBackdropStyle}>
+          <div style={modalBoxStyle}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#0f172a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>API</div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                  {editingCustomItem ? 'Edit Custom REST API' : 'Connect Custom REST API'}
+                </h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={closeButtonStyle}>✕</button>
+            </div>
+
+            <form onSubmit={handleSaveCustomApi} style={{ padding: '24px' }}>
+              <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, marginTop: 0 }}>
+                Configure an external REST service to ingest metrics and signals. Target URLs are protected with SSRF safeguards.
+              </p>
+
+              {testResult && (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  marginBottom: '16px',
+                  background: testResult.success ? '#ecfdf5' : '#fef2f2',
+                  border: `1px solid ${testResult.success ? '#a7f3d0' : '#fecaca'}`,
+                  color: testResult.success ? '#065f46' : '#991b1b',
+                  fontSize: '12.5px'
+                }}>
+                  {testResult.message || testResult.error}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Integration Name <span style={{ color: '#dc2626' }}>*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Customer Telemetry Gateway"
+                  value={apiForm.name}
+                  onChange={(e) => setApiForm({ ...apiForm, name: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Base URL <span style={{ color: '#dc2626' }}>*</span></label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://api.yourcompany.com/v1"
+                  value={apiForm.url}
+                  onChange={(e) => setApiForm({ ...apiForm, url: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                <div>
+                  <label style={labelStyle}>Authentication Method</label>
+                  <select
+                    value={apiForm.authType}
+                    onChange={(e) => setApiForm({ ...apiForm, authType: e.target.value })}
+                    style={inputStyle}
+                  >
+                    <option value="NONE">None / Public</option>
+                    <option value="BEARER">Bearer Token</option>
+                    <option value="API_KEY">API Key (Header)</option>
+                    <option value="BASIC">Basic Auth</option>
+                  </select>
+                </div>
+
+                {apiForm.authType === 'API_KEY' && (
+                  <div>
+                    <label style={labelStyle}>Header Name</label>
+                    <input
+                      type="text"
+                      placeholder="X-API-Key"
+                      value={apiForm.authHeaderName}
+                      onChange={(e) => setApiForm({ ...apiForm, authHeaderName: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {apiForm.authType !== 'NONE' && (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>Token / Secret Key</label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showApiSecret ? 'text' : 'password'}
+                      placeholder={editingCustomItem?.hasSecret ? '•••••••• (Leave blank to keep existing)' : 'Enter secret key or bearer token'}
+                      value={apiForm.secret}
+                      onChange={(e) => setApiForm({ ...apiForm, secret: e.target.value })}
+                      style={inputStyle}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiSecret(!showApiSecret)}
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                    >
+                      {showApiSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>Custom Headers (Optional JSON)</label>
+                <textarea
+                  rows={2}
+                  placeholder='{"Accept": "application/json"}'
+                  value={apiForm.customHeaders}
+                  onChange={(e) => setApiForm({ ...apiForm, customHeaders: e.target.value })}
+                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '12px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#0f172a',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {isProcessing ? 'Saving...' : 'Save Configuration'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* E. CUSTOM WEBHOOK MODAL */}
+      {activeModal === 'custom_webhook' && (
+        <div style={modalBackdropStyle}>
+          <div style={modalBoxStyle}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#1e293b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>WH</div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                  {editingCustomItem ? 'Edit Outbound Webhook' : 'Configure Outbound Webhook'}
+                </h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={closeButtonStyle}>✕</button>
+            </div>
+
+            <form onSubmit={handleSaveCustomWebhook} style={{ padding: '24px' }}>
+              <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, marginTop: 0 }}>
+                Deliver signed HTTP POST events to external endpoints when decisions mutate. Events include cryptographic HMAC-SHA256 signatures in the <code>X-PMPilot-Signature</code> header.
+              </p>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Integration Name <span style={{ color: '#dc2626' }}>*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Datadog / Zapier Pipeline"
+                  value={webhookForm.name}
+                  onChange={(e) => setWebhookForm({ ...webhookForm, name: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Target Endpoint URL <span style={{ color: '#dc2626' }}>*</span></label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://hooks.zapier.com/hooks/catch/..."
+                  value={webhookForm.url}
+                  onChange={(e) => setWebhookForm({ ...webhookForm, url: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={labelStyle}>Signing Secret (HMAC-SHA256)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    required
+                    value={webhookForm.signingSecret}
+                    onChange={(e) => setWebhookForm({ ...webhookForm, signingSecret: e.target.value })}
+                    style={{ ...inputStyle, fontFamily: 'monospace' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setWebhookForm({ ...webhookForm, signingSecret: `whsec_${Math.random().toString(36).substring(2, 12)}${Date.now()}` })}
+                    style={{ padding: '0 12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Regenerate
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>Subscribed Events</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                  {[
+                    { id: 'decision.approved', label: 'Decision Approved' },
+                    { id: 'decision.created', label: 'Decision Created' },
+                    { id: 'proposal.accepted', label: 'Proposal Accepted' },
+                    { id: 'conflict.detected', label: 'Conflict Detected' }
+                  ].map(ev => {
+                    const checked = webhookForm.events.includes(ev.id);
+                    return (
+                      <label key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setWebhookForm({ ...webhookForm, events: [...webhookForm.events, ev.id] });
+                            } else {
+                              setWebhookForm({ ...webhookForm, events: webhookForm.events.filter(x => x !== ev.id) });
+                            }
+                          }}
+                        />
+                        <span>{ev.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isProcessing}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  background: '#0f172a',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                {isProcessing ? 'Saving...' : 'Save Webhook Configuration'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* F. COMING SOON MODAL */}
+      {activeModal === 'coming_soon' && selectedComingSoon && (
+        <div style={modalBackdropStyle}>
+          <div style={modalBoxStyle}>
+            <div style={modalHeaderStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: selectedComingSoon.logoBg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                  {selectedComingSoon.logoText}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>{selectedComingSoon.name} Integration</h3>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Planned Release · In Development</span>
+                </div>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={closeButtonStyle}>✕</button>
+            </div>
+
+            <div style={{ padding: '24px' }}>
+              <p style={{ fontSize: '13.5px', color: '#475569', lineHeight: 1.5, marginTop: 0 }}>
+                {selectedComingSoon.description}
+              </p>
+
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '10px', textTransform: 'uppercase' }}>
+                  Planned Capabilities:
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#475569', lineHeight: 1.6 }}>
+                  {selectedComingSoon.plannedCapabilities?.map((cap, idx) => (
+                    <li key={idx}>{cap}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alert(`Thank you for your interest! Your workspace (${activeWorkspace?.name || 'My Workspace'}) has been added to the early access waitlist for ${selectedComingSoon.name}.`);
+                    setActiveModal(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#0f172a',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Join Early Access Waitlist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    color: '#0f172a',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+
+// Common styles
+const modalBackdropStyle = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: 'rgba(15, 23, 42, 0.65)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 9999,
+  backdropFilter: 'blur(3px)'
+};
+
+const modalBoxStyle = {
+  background: '#ffffff',
+  borderRadius: '12px',
+  width: '100%',
+  maxWidth: '520px',
+  boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+  overflow: 'hidden'
+};
+
+const modalHeaderStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '18px 24px',
+  borderBottom: '1px solid #f1f5f9',
+  background: '#fafbfc'
+};
+
+const closeButtonStyle = {
+  background: 'none',
+  border: 'none',
+  fontSize: '16px',
+  cursor: 'pointer',
+  color: '#64748b',
+  fontWeight: 700
+};
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#334155',
+  marginBottom: '6px'
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: '6px',
+  border: '1px solid #cbd5e1',
+  fontSize: '13px',
+  outline: 'none',
+  background: '#ffffff',
+  boxSizing: 'border-box'
+};

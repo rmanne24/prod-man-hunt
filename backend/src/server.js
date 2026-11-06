@@ -26,6 +26,8 @@ import { authenticateToken, requireAuth, requireRealUser, requireWorkspaceMember
 import { createRateLimiter } from "./auth/rateLimiter.js";
 import { linearService } from "./integrations/linearService.js";
 import { switchService } from "./integrations/switchService.js";
+import { slackService } from "./integrations/slackService.js";
+import { customIntegrationService } from "./integrations/customIntegrationService.js";
 
 const __serverDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__serverDir, "../.env") });
@@ -608,6 +610,131 @@ app.post("/api/workspaces/:workspaceId/integrations/linear/disconnect", requireW
   }
 });
 
+/* ------------------- SLACK INTEGRATION ROUTES ------------------- */
+
+// Get Slack connection status for workspace
+app.get("/api/workspaces/:workspaceId/integrations/slack/status", requireWorkspaceMember, async (req, res) => {
+  try {
+    const status = await slackService.getConnectionStatus(req.params.workspaceId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Connect Slack webhook to workspace (verifies connectivity before saving)
+app.post("/api/workspaces/:workspaceId/integrations/slack/connect", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { webhookUrl, channel, teamName } = req.body;
+    const result = await slackService.connect({
+      workspaceId: req.params.workspaceId,
+      userId: req.user.id,
+      webhookUrl,
+      channel,
+      teamName
+    });
+    res.json({ success: true, connection: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Send test ping to Slack
+app.post("/api/workspaces/:workspaceId/integrations/slack/test", requireWorkspaceMember, async (req, res) => {
+  try {
+    const result = await slackService.testConnection(req.params.workspaceId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Disconnect Slack
+app.post("/api/workspaces/:workspaceId/integrations/slack/disconnect", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const result = await slackService.disconnect(req.params.workspaceId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ------------------- CUSTOM INTEGRATIONS ROUTES (REST APIs & Webhooks) ------------------- */
+
+// List custom integrations for workspace
+app.get("/api/workspaces/:workspaceId/integrations/custom", requireWorkspaceMember, async (req, res) => {
+  try {
+    const items = await customIntegrationService.list(req.params.workspaceId);
+    res.json({ success: true, integrations: items });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Create custom integration in workspace
+app.post("/api/workspaces/:workspaceId/integrations/custom", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const item = await customIntegrationService.create(req.params.workspaceId, req.user.id, req.body);
+    res.status(201).json({ success: true, integration: item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Get single custom integration
+app.get("/api/workspaces/:workspaceId/integrations/custom/:id", requireWorkspaceMember, async (req, res) => {
+  try {
+    const item = await customIntegrationService.get(req.params.workspaceId, req.params.id);
+    if (!item) {
+      return res.status(404).json({ success: false, error: "Custom integration not found." });
+    }
+    res.json({ success: true, integration: item });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Update custom integration
+app.put("/api/workspaces/:workspaceId/integrations/custom/:id", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const item = await customIntegrationService.update(req.params.workspaceId, req.params.id, req.body);
+    res.json({ success: true, integration: item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Delete custom integration
+app.delete("/api/workspaces/:workspaceId/integrations/custom/:id", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const result = await customIntegrationService.delete(req.params.workspaceId, req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Toggle enabled status
+app.post("/api/workspaces/:workspaceId/integrations/custom/:id/toggle", requireWorkspaceMember, requireRealUser, async (req, res) => {
+  try {
+    const { isEnabled } = req.body;
+    const item = await customIntegrationService.toggle(req.params.workspaceId, req.params.id, Boolean(isEnabled));
+    res.json({ success: true, integration: item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Test custom integration (safe outbound HTTP/webhook request)
+app.post("/api/workspaces/:workspaceId/integrations/custom/:id/test", requireWorkspaceMember, async (req, res) => {
+  try {
+    const result = await customIntegrationService.test(req.params.workspaceId, req.params.id);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 /* ------------------- SWITCH AI COLLABORATION ROUTES ------------------- */
 
 // Safe Switch preflight report (health check probe to GET /health, status, config presence, zero secrets)
@@ -814,6 +941,25 @@ app.post("/api/export/slack", requireWorkspaceMember, async (req, res) => {
 
     // Strictly guard downstream export: Decision must have valid human approval
     await RedisStateManager.guardArtifactGeneration(targetId);
+
+    // If workspace has real Slack connected, dispatch live Slack notification
+    const slackConn = req.workspaceId ? db.getIntegrationConnection(req.workspaceId, 'SLACK') : null;
+    if (slackConn && slackConn.status === 'CONNECTED') {
+      const decision = await RedisStateManager.getSession(targetId);
+      const broadcastRes = await slackService.broadcastDecisionApproval(req.workspaceId, {
+        decisionTitle: decision?.title || 'Approved Product Decision',
+        version: decision?.version || 1,
+        summary: message || decision?.recommendation?.actionSummary,
+        decidedBy: req.user?.name || req.user?.email || 'PM'
+      });
+      return res.json({
+        success: true,
+        service: 'Slack',
+        status: 'NOTIFICATION_SENT',
+        deliveredTo: broadcastRes.deliveredTo,
+        isLiveConnected: true
+      });
+    }
 
     const result = await CrossSurfaceHub.triggerSlackNotification(channel, message);
     res.json({
