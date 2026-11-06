@@ -75,8 +75,7 @@ Maintain isolated workspaces with owner and member access controls, ensuring tha
 
 PMPilot follows a modular architecture built around a deterministic decision state machine.
 
-```text
-                  ┌──────────────────────────────┐
+```text┌──────────────────────────────┐
                   │       PMPilot Frontend        │
                   │         React + Vite          │
                   │                              │
