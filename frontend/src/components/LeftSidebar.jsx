@@ -25,7 +25,7 @@ export default function LeftSidebar({
   const { user, isAuthenticated, isDemoMode, activeWorkspace, workspaces, setActiveWorkspace, createWorkspace, logout, exitDemoMode } = useAuth();
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = React.useState(false);
   const initials = user?.name
-    ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+    ? user.name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'PM'
     : (isDemoMode ? 'DM' : 'PM');
 
   const currentWsName = activeWorkspace?.name || (isDemoMode ? 'Moonshot Studio [DEMO]' : 'My Workspace');
@@ -326,28 +326,34 @@ export default function LeftSidebar({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {sources.slice(0, 4).map((src) => (
-              <div
-                key={src.id}
-                onClick={() => setActiveNav('evidence')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '5px 8px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  color: '#334155',
-                  background: 'transparent'
-                }}
-              >
-                <Database size={12} color="#94a3b8" />
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
-                  {src.name.replace(/^\[.*?\]\s*/, '')}
-                </span>
-              </div>
-            ))}
+            {Array.isArray(sources) && sources.slice(0, 4).map((src, idx) => {
+              const rawName = src?.name || src?.source || src?.title || src?.sanitizedText || 'Captured Signal';
+              const cleanName = typeof rawName === 'string'
+                ? rawName.replace(/^\[.*?\]\s*/, '')
+                : 'Captured Signal';
+              return (
+                <div
+                  key={src?.id || `src-${idx}`}
+                  onClick={() => setActiveNav('evidence')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    color: '#334155',
+                    background: 'transparent'
+                  }}
+                >
+                  <Database size={12} color="#94a3b8" />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                    {cleanName}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -384,7 +390,7 @@ export default function LeftSidebar({
                 overflow: 'hidden',
                 textOverflow: 'ellipsis'
               }}>
-                {isAuthenticated ? user.name : 'Judge Demo Client'}
+                {isAuthenticated ? (user?.name || user?.email || 'PM User') : 'Judge Demo Client'}
               </div>
               <div style={{
                 fontSize: '10px',

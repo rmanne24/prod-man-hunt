@@ -195,7 +195,7 @@ function PMPilotWorkspace() {
       headers['X-Workspace-Id'] = activeWorkspace.id;
     }
     return headers;
-  }, [token, isDemoMode, activeWorkspace]);
+  }, [token, isDemoMode, activeWorkspace?.id]);
 
   // Load decisions list for current active workspace
   const fetchWorkspaceDecisions = useCallback(async () => {
@@ -273,17 +273,18 @@ function PMPilotWorkspace() {
     if (activeWorkspace?.id) {
       fetchWorkspaceDecisions().then((decs) => {
         if (decs && decs.length > 0) {
-          const currentId = selectedDecisionId && decs.some(d => d.id === selectedDecisionId)
-            ? selectedDecisionId
-            : decs[0].id;
-          setSelectedDecisionId(currentId);
-          fetchDecisionDetail(currentId);
+          setSelectedDecisionId((prevId) => {
+            const nextId = prevId && decs.some(d => d.id === prevId) ? prevId : decs[0].id;
+            fetchDecisionDetail(nextId);
+            return nextId;
+          });
         } else {
+          setSelectedDecisionId(null);
           setSession(null);
         }
       });
     }
-  }, [isAuthenticated, isDemoMode, activeWorkspace?.id, fetchWorkspaceDecisions, fetchDecisionDetail, selectedDecisionId]);
+  }, [isAuthenticated, isDemoMode, activeWorkspace?.id, fetchWorkspaceDecisions, fetchDecisionDetail]);
 
   if (isLoading) {
     return (
@@ -547,7 +548,7 @@ function PMPilotWorkspace() {
                   fontWeight: 600
                 }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
-                  <span>{user.name}</span>
+                  <span>{user?.name || user?.email || 'PM User'}</span>
                 </div>
                 <button
                   onClick={logout}
