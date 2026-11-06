@@ -1,4 +1,4 @@
-# PMPilot — Decision Intelligence for Product Managers
+# PMPilot - Decision Intelligence for Product Managers
 
 **Turn fragmented product feedback into traceable, conflict-free, and execution-ready decisions.**
 
