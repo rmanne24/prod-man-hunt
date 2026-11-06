@@ -13,6 +13,7 @@ Unlike generic AI assistants that generate recommendations without accountabilit
 **Live Application:** 
 
 **Source Code:** [PMPilot — GitHub Repository](https://github.com/rmanne24/prod-man-hunt)
+**Deployed Link:** [PMPilot](https://pmpilot-ochre.vercel.app/)
 
 ---
 
@@ -280,7 +281,7 @@ Our central principle:
 
 **AI can propose. Evidence must justify. Humans must approve. Systems must enforce.**
 
-PMPilot aims to make product decisions more transparent, collaborative, traceable, and reliable — from the first customer signal to the final engineering issue.
+PMPilot aims to make product decisions more transparent, collaborative, traceable, and reliable from the first customer signal to the final engineering issue.
 
 ---
 
